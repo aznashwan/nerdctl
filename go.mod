@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.1.1
 	github.com/Microsoft/go-winio v0.6.0
 	github.com/compose-spec/compose-go v1.6.0
-	github.com/containerd/cgroups v1.0.4
+	github.com/containerd/cgroups v1.0.5-0.20220816231112-7083cd60b721
 	github.com/containerd/console v1.0.3
 	github.com/containerd/containerd v1.6.8 // replaced
 	github.com/containerd/continuity v0.3.0
@@ -49,22 +49,22 @@ require (
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74
 	github.com/yuchanns/srslog v1.1.0
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
-	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+	golang.org/x/net v0.0.0-20220906165146-f3363e06e74c
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
-	golang.org/x/sys v0.0.0-20220818161305-2296e01440c6
+	golang.org/x/sys v0.0.0-20220915200043-7b5979e65e41
 	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467
 	gopkg.in/yaml.v3 v3.0.1
 	gotest.tools/v3 v3.4.0
 )
 
 require (
-	github.com/AdaLogics/go-fuzz-headers v0.0.0-20220706123152-fef3fe1bab07 // indirect
-	github.com/Microsoft/hcsshim v0.9.4 // indirect
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20220903154154-e8044f6e4c72 // indirect
+	github.com/Microsoft/hcsshim v0.10.0-rc.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/btcsuite/btcd v0.21.0-beta // indirect
-	github.com/cilium/ebpf v0.7.0 // indirect
-	github.com/container-orchestrated-devices/container-device-interface v0.3.1 // indirect
+	github.com/cilium/ebpf v0.9.1 // indirect
+	github.com/container-orchestrated-devices/container-device-interface v0.5.1 // indirect
 	github.com/containerd/fifo v1.0.0 // indirect
 	github.com/containerd/ttrpc v1.1.1-0.20220420014843-944ef4a40df3 // indirect
 	github.com/containers/ocicrypt v1.1.6 // indirect
@@ -169,13 +169,17 @@ require (
 )
 
 require (
+	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20220912195655-e1f97a00006b // indirect
+	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/moby/sys/sequential v0.0.0-20220829095930-b22ba8a69b30 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 )
 
 replace (
-	// containerd main
-	github.com/containerd/containerd => github.com/containerd/containerd v1.6.1-0.20220807041520-6deb1174fbfc
+	// containerd main which includes containerd#7351, please see:
+	// https://github.com/containerd/nerdctl/pull/1468#issuecomment-1295050566
+	github.com/containerd/containerd => github.com/containerd/containerd v1.6.1-0.20220922191542-12b447606a8c
 	// Temporary fork for avoiding importing patent-protected code: https://github.com/hashicorp/golang-lru/issues/73
 	github.com/hashicorp/golang-lru => github.com/ktock/golang-lru v0.5.5-0.20211029085301-ec551be6f75c
 )
