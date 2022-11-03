@@ -21,6 +21,7 @@ import (
 	"net"
 	"path"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/containerd/nerdctl/pkg/testutil"
@@ -174,6 +175,7 @@ func TestLoginWithPlainHttp(t *testing.T) {
 			args = append(args, []string{
 				"--debug-full", "--hosts-dir", tc.registry.HostsDir, "login", "-u", tc.username, "-p", tc.password, regHost,
 			}...)
+			t.Logf("full registry login subcommand is: %q", strings.Join(args, " "))
 			cmd := base.Cmd(args...)
 			if tc.shouldSuccess {
 				cmd.AssertOK()
