@@ -19,6 +19,8 @@ package nettype
 import (
 	"fmt"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Type int
@@ -41,6 +43,7 @@ var netTypeToName = map[interface{}]string{
 
 func Detect(names []string) (Type, error) {
 	var res Type
+	logrus.Debugf("### nettype.go: attempting to detect net type for slice: %v", names)
 
 	for _, name := range names {
 		var tmp Type

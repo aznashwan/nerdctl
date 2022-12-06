@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -580,6 +581,15 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	if err != nil {
 		return nil, nil, err
 	}
+	logrus.Debugf("### run.go: Received opts, netSlice, ipAddress, ports, macAddress: %#v, %#v, %#v, %#v, %#v", opts, netSlice, ipAddress, ports, macAddress)
+
+	for i, opt := range opts {
+		logrus.Debugf("### run.go: received []oci.SpecOpts[%d]: %#v", i, GetFunctionName(opt))
+	}
+	for i, port := range ports {
+		logrus.Debugf("### run.go: received []gocni.PortMapping[%d]: %#v", i, port)
+	}
+
 	internalLabels.networks = netSlice
 	internalLabels.ipAddress = ipAddress
 	internalLabels.ports = ports
@@ -591,6 +601,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		return nil, nil, err
 	}
 	opts = append(opts, hookOpt)
+	logrus.Debugf("### run.go: Nerdctl OCI hook: %#v", GetFunctionName(hookOpt))
 
 	uOpts, err := generateUserOpts(cmd)
 	if err != nil {
@@ -1271,4 +1282,8 @@ func generateEnvs(envFile []string, env []string) ([]string, error) {
 	}
 
 	return envs, nil
+}
+
+func GetFunctionName(i interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }

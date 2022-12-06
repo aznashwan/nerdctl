@@ -431,15 +431,21 @@ func (e *CNIEnv) networkConfigList() ([]*NetworkConfig, error) {
 			if err != nil {
 				return nil, err
 			}
+			logrus.Debugf("### ConfListFromFile(%s): %+v", fileName, lcl)
 		} else {
 			lc, err := libcni.ConfFromFile(fileName)
 			if err != nil {
 				return nil, err
 			}
+			logrus.Debugf("### ConfFromFile(%s): %+v", fileName, lc)
 			lcl, err = libcni.ConfListFromConf(lc)
 			if err != nil {
 				return nil, err
 			}
+			logrus.Debugf("### ConfListFromConf(%s): %+v", fileName, lcl)
+		}
+		for i, plugin := range lcl.Plugins {
+			logrus.Debugf("### [%s] ConfListFromConf(%d).Plugins[%d]: %+v", lcl.CNIVersion, fileName, i, string(plugin.Bytes))
 		}
 		id, labels := nerdctlIDLabels(lcl.Bytes)
 		l = append(l, &NetworkConfig{

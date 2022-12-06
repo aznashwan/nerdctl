@@ -125,6 +125,7 @@ func generateNetOpts(cmd *cobra.Command, dataStore, stateDir, ns, id string) ([]
 	if err != nil {
 		return nil, nil, "", nil, "", err
 	}
+	logrus.Debugf("### Detected network slice: %#v", netSlice)
 
 	if (len(netSlice) == 0) && (ipAddress != "") {
 		logrus.Warnf("You have assign an IP address %s but no network, So we will use the default network", ipAddress)
@@ -140,6 +141,7 @@ func generateNetOpts(cmd *cobra.Command, dataStore, stateDir, ns, id string) ([]
 	if err != nil {
 		return nil, nil, "", nil, "", err
 	}
+	logrus.Debugf("### run_network.go: netType: %#v", netType)
 
 	switch netType {
 	case nettype.None:
@@ -246,6 +248,7 @@ func generateNetOpts(cmd *cobra.Command, dataStore, stateDir, ns, id string) ([]
 	default:
 		return nil, nil, "", nil, "", fmt.Errorf("unexpected network type %v", netType)
 	}
+	logrus.Debugf("### run_network.generateNetOpts(): returning networking opts, netSlice, ipAddress, ports, macAddress: %#v, %#v, %#v, %#v, %#v", opts, netSlice, ipAddress, ports, macAddress)
 	return opts, netSlice, ipAddress, ports, macAddress, nil
 }
 
