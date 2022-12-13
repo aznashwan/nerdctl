@@ -60,7 +60,8 @@ import (
 )
 
 const (
-	tiniInitBinary = "tini"
+	tiniInitBinary   = "tini"
+	ISOLATION_HYPERV = "hyperv"
 )
 
 func newRunCommand() *cobra.Command {
@@ -208,6 +209,11 @@ func setCreateFlags(cmd *cobra.Command) {
 	cmd.Flags().StringArray("gpus", nil, "GPU devices to add to the container ('all' to pass all GPUs)")
 	cmd.RegisterFlagCompletionFunc("gpus", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"all"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	// https://github.com/docker/cli/blob/master/docs/reference/commandline/run.md#-specify-isolation-technology-for-container---isolation
+	cmd.Flags().String("isolation", "", "Windows-only isolation mode to use for this container. Can be set to \"process\" or \"hyperv\". Defaults to the server-side setting if not set.")
+	cmd.RegisterFlagCompletionFunc("isolation", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"isolation=", "isolation=process", "isolation=hyperv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 	// #endregion
 
@@ -676,6 +682,11 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	opts = append(opts, propagateContainerdLabelsToOCIAnnotations())
 
 	var s specs.Spec
+	isolation, err := cmd.Flags().GetString("isolation")
+	if isolation == ISOLATION_HYPERV {
+		oci.WithWindowsHyperV(ctx, client, nil, &s)
+	}
+
 	spec := containerd.WithSpec(&s, opts...)
 	cOpts = append(cOpts, spec)
 
