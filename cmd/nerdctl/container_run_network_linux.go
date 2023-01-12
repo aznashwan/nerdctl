@@ -1,0 +1,155 @@
+/*
+   Copyright The containerd Authors.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+
+	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/oci"
+	"github.com/containerd/nerdctl/pkg/clientutil"
+	"github.com/containerd/nerdctl/pkg/dnsutil"
+	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
+	"github.com/containerd/nerdctl/pkg/netutil"
+	"github.com/containerd/nerdctl/pkg/resolvconf"
+	"github.com/containerd/nerdctl/pkg/rootlessutil"
+	"github.com/containerd/nerdctl/pkg/strutil"
+	"github.com/sirupsen/logrus"
+)
+
+// Verifies that the internal network settings are correct.
+func (m *cniNetworkManager) verifyNetworkOptions() error {
+	e, err := netutil.NewCNIEnv(m.globalOptions.CNIPath, m.globalOptions.CNINetConfPath, netutil.WithDefaultNetwork())
+	if err != nil {
+		return err
+	}
+	macValidNetworks := []string{"bridge", "macvlan"}
+	netMap, err := e.NetworkMap()
+	if err != nil {
+		return err
+	}
+	for _, netstr := range m.netOpts.networkSlice {
+		netConfig, ok := netMap[netstr]
+		if !ok {
+			return fmt.Errorf("network %s not found", netstr)
+		}
+		// if MAC address is specified, the type of the network
+		// must be one of macValidNetworks
+		netType := netConfig.Plugins[0].Network.Type
+		if m.netOpts.macAddress != "" && !strutil.InStringSlice(macValidNetworks, netType) {
+			return fmt.Errorf("%s interfaces on network %s do not support --mac-address", netType, netstr)
+		}
+	}
+	return nil
+}
+
+// Performs setup actions required for the container with the given ID.
+func (m *cniNetworkManager) setupNetworking(_ string) error {
+	return nil
+}
+
+// Performs any required cleanup actions for the container with the given ID.
+// Should only be called to revert any setup steps performed in setupNetworking.
+func (m *cniNetworkManager) cleanupNetworking(_ string) error {
+	return nil
+}
+
+// Returns a struct with the internal networking labels for the internal
+// network settings which should be set of the container.
+func (m *cniNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
+	return m.netOpts.toInternalLabels(), nil
+}
+
+// Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
+// the network specs which need to be applied to the container with the given ID.
+func (m *cniNetworkManager) getContainerNetworkingOpts(containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+	opts := []oci.SpecOpts{}
+	cOpts := []containerd.NewContainerOpts{}
+
+	dataStore, err := clientutil.DataStore(m.globalOptions.DataRoot, m.globalOptions.Address)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	stateDir, err := getContainerStateDirPath(m.globalOptions, dataStore, containerID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resolvConfPath := filepath.Join(stateDir, "resolv.conf")
+	if err := m.buildResolvConf(resolvConfPath); err != nil {
+		return nil, nil, err
+	}
+
+	// the content of /etc/hosts is created in OCI Hook
+	etcHostsPath, err := hostsstore.AllocHostsFile(dataStore, m.globalOptions.Namespace, containerID)
+	if err != nil {
+		return nil, nil, err
+	}
+	opts = append(opts, withCustomResolvConf(resolvConfPath), withCustomHosts(etcHostsPath))
+
+	return opts, cOpts, nil
+}
+
+func (m *cniNetworkManager) buildResolvConf(resolvConfPath string) error {
+	var err error
+	slirp4Dns := []string{}
+	if rootlessutil.IsRootlessChild() {
+		slirp4Dns, err = dnsutil.GetSlirp4netnsDNS()
+		if err != nil {
+			return err
+		}
+	}
+
+	var (
+		nameServers   = m.netOpts.dnsServers
+		searchDomains = m.netOpts.dnsSearchDomains
+		dnsOptions    = m.netOpts.dnsResolvConfOptions
+	)
+
+	// Use host defaults if any DNS settings are missing:
+	if len(nameServers) == 0 || len(searchDomains) == 0 || len(dnsOptions) == 0 {
+		conf, err := resolvconf.Get()
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			// if resolvConf file does't exist, using default resolvers
+			conf = &resolvconf.File{}
+			logrus.WithError(err).Debugf("resolvConf file doesn't exist on host")
+		}
+		conf, err = resolvconf.FilterResolvDNS(conf.Content, true)
+		if err != nil {
+			return err
+		}
+		if len(nameServers) == 0 {
+			nameServers = resolvconf.GetNameservers(conf.Content, resolvconf.IPv4)
+		}
+		if len(searchDomains) == 0 {
+			searchDomains = resolvconf.GetSearchDomains(conf.Content)
+		}
+		if len(dnsOptions) == 0 {
+			dnsOptions = resolvconf.GetOptions(conf.Content)
+		}
+	}
+
+	_, err = resolvconf.Build(resolvConfPath, append(slirp4Dns, nameServers...), searchDomains, dnsOptions)
+	return err
+}

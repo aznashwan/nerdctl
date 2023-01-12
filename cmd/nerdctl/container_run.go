@@ -439,7 +439,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		return nil, nil, err
 	}
 
-	stateDir, err := getContainerStateDirPath(cmd, globalOptions, dataStore, id)
+	stateDir, err := getContainerStateDirPath(globalOptions, dataStore, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -608,16 +608,34 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		}
 	}
 
-	netOpts, netSlice, ipAddress, ports, macAddress, err := generateNetOpts(cmd, globalOptions, dataStore, stateDir, globalOptions.Namespace, id)
+	// Set networking-related options and labels:
+	netManager, err := newNetworkingOptionsManager(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
-	internalLabels.networks = netSlice
-	internalLabels.ipAddress = ipAddress
-	internalLabels.ports = ports
-	internalLabels.macAddress = macAddress
-	opts = append(opts, netOpts...)
 
+	err = netManager.verifyNetworkOptions()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to verify networking settings: %s", err)
+	}
+
+	netOpts, netNewContainerOpts, err := netManager.getContainerNetworkingOpts(id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate networking spec options: %s", err)
+	}
+	opts = append(opts, netOpts...)
+	cOpts = append(cOpts, netNewContainerOpts...)
+
+	netLabels, err := netManager.getInternalNetworkingLabels()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate internal networking labels: %s", err)
+	}
+	internalLabels.macAddress = netLabels.macAddress
+	internalLabels.ipAddress = netLabels.ipAddress
+	internalLabels.networks = netLabels.networks
+	internalLabels.ports = netLabels.ports
+
+	// other hook options:
 	hookOpt, err := withNerdctlOCIHook(cmd, id)
 	if err != nil {
 		return nil, nil, err
@@ -724,12 +742,30 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 
 	var s specs.Spec
 	spec := containerd.WithSpec(&s, opts...)
+
 	cOpts = append(cOpts, spec)
 
-	container, err := client.NewContainer(ctx, id, cOpts...)
-	if err != nil {
+	container, cerr := client.NewContainer(ctx, id, cOpts...)
+	netErr := netManager.setupNetworking(id)
+
+	if cerr != nil || netErr != nil {
+		err := cerr
+		if err == nil {
+			err = netErr
+		}
+
 		gcContainer := func() {
 			var isErr bool
+			if netErr != nil {
+				logrus.Warnf("a networking setup error has occurred, reverting networking setup: %s", netErr)
+
+				errE := netManager.cleanupNetworking(id)
+				if err != nil {
+					logrus.Warnf("failed to revert container networking: %s", errE)
+					isErr = true
+				}
+			}
+
 			if errE := os.RemoveAll(stateDir); errE != nil {
 				isErr = true
 			}
@@ -747,8 +783,10 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 				logrus.Warnf("failed to remove container %q", id)
 			}
 		}
+
 		return nil, gcContainer, err
 	}
+
 	return container, nil, nil
 }
 
@@ -964,8 +1002,7 @@ func withNerdctlOCIHook(cmd *cobra.Command, id string) (oci.SpecOpts, error) {
 	}, nil
 }
 
-func getContainerStateDirPath(cmd *cobra.Command, globalOptions types.GlobalCommandOptions, dataStore, id string) (string, error) {
-
+func getContainerStateDirPath(globalOptions types.GlobalCommandOptions, dataStore, id string) (string, error) {
 	if globalOptions.Namespace == "" {
 		return "", errors.New("namespace is required")
 	}
