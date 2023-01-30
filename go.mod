@@ -58,6 +58,8 @@ require (
 	gotest.tools/v3 v3.4.0
 )
 
+require github.com/moby/sys/symlink v0.2.0 // indirect
+
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20221215162035-5330a85ea652 // indirect
