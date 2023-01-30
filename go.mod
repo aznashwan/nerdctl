@@ -11,7 +11,7 @@ require (
 	github.com/containerd/console v1.0.3
 	github.com/containerd/containerd v1.7.0-beta.3
 	github.com/containerd/continuity v0.3.0
-	github.com/containerd/go-cni v1.1.7
+	github.com/containerd/go-cni v1.1.8-0.20221026181309-f108694a5873
 	github.com/containerd/imgcrypt v1.1.7
 	github.com/containerd/nydus-snapshotter v0.5.1
 	github.com/containerd/stargz-snapshotter v0.14.1
@@ -57,6 +57,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gotest.tools/v3 v3.4.0
 )
+
+require github.com/moby/sys/symlink v0.2.0 // indirect
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
