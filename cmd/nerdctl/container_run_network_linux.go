@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/dnsutil"
 	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
@@ -35,7 +37,7 @@ import (
 )
 
 // Verifies that the internal network settings are correct.
-func (m *cniNetworkManager) verifyNetworkOptions() error {
+func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	e, err := netutil.NewCNIEnv(m.globalOptions.CNIPath, m.globalOptions.CNINetConfPath, netutil.WithDefaultNetwork())
 	if err != nil {
 		return err
@@ -45,7 +47,7 @@ func (m *cniNetworkManager) verifyNetworkOptions() error {
 	if err != nil {
 		return err
 	}
-	for _, netstr := range m.netOpts.networkSlice {
+	for _, netstr := range m.netOpts.NetworkSlice {
 		netConfig, ok := netMap[netstr]
 		if !ok {
 			return fmt.Errorf("network %s not found", netstr)
@@ -53,7 +55,7 @@ func (m *cniNetworkManager) verifyNetworkOptions() error {
 		// if MAC address is specified, the type of the network
 		// must be one of macValidNetworks
 		netType := netConfig.Plugins[0].Network.Type
-		if m.netOpts.macAddress != "" && !strutil.InStringSlice(macValidNetworks, netType) {
+		if m.netOpts.MACAddress != "" && !strutil.InStringSlice(macValidNetworks, netType) {
 			return fmt.Errorf("%s interfaces on network %s do not support --mac-address", netType, netstr)
 		}
 	}
@@ -61,25 +63,24 @@ func (m *cniNetworkManager) verifyNetworkOptions() error {
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *cniNetworkManager) setupNetworking(_ string) error {
+func (m *cniNetworkManager) SetupNetworking(_ context.Context, _ string) error {
 	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
-func (m *cniNetworkManager) cleanupNetworking(_ string) error {
+func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
 	return nil
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *cniNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	return m.netOpts.toInternalLabels(), nil
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *cniNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context) (types.NetworkOptions, error) {
+	return m.netOpts, nil
 }
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *cniNetworkManager) getContainerNetworkingOpts(containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
 	opts := []oci.SpecOpts{}
 	cOpts := []containerd.NewContainerOpts{}
 
@@ -119,9 +120,9 @@ func (m *cniNetworkManager) buildResolvConf(resolvConfPath string) error {
 	}
 
 	var (
-		nameServers   = m.netOpts.dnsServers
-		searchDomains = m.netOpts.dnsSearchDomains
-		dnsOptions    = m.netOpts.dnsResolvConfOptions
+		nameServers   = m.netOpts.DNSServers
+		searchDomains = m.netOpts.DNSSearchDomains
+		dnsOptions    = m.netOpts.DNSResolvConfOptions
 	)
 
 	// Use host defaults if any DNS settings are missing:

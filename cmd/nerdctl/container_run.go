@@ -609,27 +609,34 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	}
 
 	// Set networking-related options and labels:
-	netManager, err := newNetworkingOptionsManager(cmd)
+	netFlags, err := loadNetworkFlags(cmd)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load networking flags: %s", err)
+	}
+
+	netManager, err := newNetworkingOptionsManager(globalOptions, netFlags)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	err = netManager.verifyNetworkOptions()
+	err = netManager.VerifyNetworkOptions(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to verify networking settings: %s", err)
 	}
 
-	netOpts, netNewContainerOpts, err := netManager.getContainerNetworkingOpts(id)
+	netOpts, netNewContainerOpts, err := netManager.GetContainerNetworkingOpts(ctx, id)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate networking spec options: %s", err)
 	}
 	opts = append(opts, netOpts...)
 	cOpts = append(cOpts, netNewContainerOpts...)
 
-	netLabels, err := netManager.getInternalNetworkingLabels()
+	netLabelOpts, err := netManager.GetInternalNetworkingOptionLabels(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate internal networking labels: %s", err)
 	}
+	// TODO(aznashwan): less sloppy way to load net opts into internalLabels:
+	netLabels := networkingLabelsFromOptions(netLabelOpts)
 	internalLabels.macAddress = netLabels.macAddress
 	internalLabels.ipAddress = netLabels.ipAddress
 	internalLabels.networks = netLabels.networks
@@ -746,7 +753,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	cOpts = append(cOpts, spec)
 
 	container, cerr := client.NewContainer(ctx, id, cOpts...)
-	netErr := netManager.setupNetworking(id)
+	netErr := netManager.SetupNetworking(ctx, id)
 
 	if cerr != nil || netErr != nil {
 		err := cerr
@@ -759,7 +766,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 			if netErr != nil {
 				logrus.Warnf("a networking setup error has occurred, reverting networking setup: %s", netErr)
 
-				errE := netManager.cleanupNetworking(id)
+				errE := netManager.CleanupNetworking(ctx, id)
 				if err != nil {
 					logrus.Warnf("failed to revert container networking: %s", errE)
 					isErr = true

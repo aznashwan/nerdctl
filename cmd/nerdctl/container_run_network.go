@@ -79,49 +79,19 @@ func withCustomHosts(src string) func(context.Context, oci.Client, *containers.C
 	}
 }
 
-// Struct defining networking-related options.
-type networkOptions struct {
-	// --net/--network=<net name> ...
-	networkSlice []string
-
-	// --mac-address=<MAC>
-	macAddress string
-
-	// --ip=<container static IP>
-	ipAddress string
-
-	// -h/--hostname=<container hostname>
-	hostname string
-
-	// --dns=<DNS host> ...
-	dnsServers []string
-
-	// --dns-opt/--dns-option=<resolv.conf line> ...
-	dnsResolvConfOptions []string
-
-	// --dns-search=<domain name> ...
-	dnsSearchDomains []string
-
-	// --add-host=<host:IP> ...
-	addHost []string
-
-	// -p/--publish=127.0.0.1:80:8080/tcp ...
-	portMappings []gocni.PortMapping
-}
-
-// Returns an internalLabels struct with the networking fields which map 1:1 set in it.
-func (nopts networkOptions) toInternalLabels() internalLabels {
+// Returns an internalLabels struct from the provided network options.
+func networkingLabelsFromOptions(netOpts types.NetworkOptions) internalLabels {
 	return internalLabels{
-		hostname:   nopts.hostname,
-		networks:   nopts.networkSlice,
-		ipAddress:  nopts.ipAddress,
-		ports:      nopts.portMappings,
-		macAddress: nopts.macAddress,
+		hostname:   netOpts.Hostname,
+		networks:   netOpts.NetworkSlice,
+		ipAddress:  netOpts.IPAddress,
+		ports:      netOpts.PortMappings,
+		macAddress: netOpts.MACAddress,
 	}
 }
 
-func loadNetworkFlags(cmd *cobra.Command) (networkOptions, error) {
-	nopts := networkOptions{}
+func loadNetworkFlags(cmd *cobra.Command) (types.NetworkOptions, error) {
+	netOpts := types.NetworkOptions{}
 
 	// --net/--network=<net name> ...
 	var netSlice = []string{}
@@ -129,7 +99,7 @@ func loadNetworkFlags(cmd *cobra.Command) (networkOptions, error) {
 	if cmd.Flags().Lookup("network").Changed {
 		network, err := cmd.Flags().GetStringSlice("network")
 		if err != nil {
-			return nopts, err
+			return netOpts, err
 		}
 		netSlice = append(netSlice, network...)
 		networkSet = true
@@ -137,7 +107,7 @@ func loadNetworkFlags(cmd *cobra.Command) (networkOptions, error) {
 	if cmd.Flags().Lookup("net").Changed {
 		net, err := cmd.Flags().GetStringSlice("net")
 		if err != nil {
-			return nopts, err
+			return netOpts, err
 		}
 		netSlice = append(netSlice, net...)
 		networkSet = true
@@ -146,239 +116,227 @@ func loadNetworkFlags(cmd *cobra.Command) (networkOptions, error) {
 	if !networkSet {
 		network, err := cmd.Flags().GetStringSlice("network")
 		if err != nil {
-			return nopts, err
+			return netOpts, err
 		}
 		netSlice = append(netSlice, network...)
 	}
-	nopts.networkSlice = strutil.DedupeStrSlice(netSlice)
+	netOpts.NetworkSlice = strutil.DedupeStrSlice(netSlice)
 
 	// --mac-address=<MAC>
 	macAddress, err := cmd.Flags().GetString("mac-address")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
 	if macAddress != "" {
 		if _, err := net.ParseMAC(macAddress); err != nil {
-			return nopts, err
+			return netOpts, err
 		}
 	}
-	nopts.macAddress = macAddress
+	netOpts.MACAddress = macAddress
 
 	// --ip=<container static IP>
 	ipAddress, err := cmd.Flags().GetString("ip")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
-	nopts.ipAddress = ipAddress
+	netOpts.IPAddress = ipAddress
 
 	// -h/--hostname=<container hostname>
 	hostName, err := cmd.Flags().GetString("hostname")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
-	nopts.hostname = hostName
+	netOpts.Hostname = hostName
 
 	// --dns=<DNS host> ...
 	dnsSlice, err := cmd.Flags().GetStringSlice("dns")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
-	nopts.dnsServers = strutil.DedupeStrSlice(dnsSlice)
+	netOpts.DNSServers = strutil.DedupeStrSlice(dnsSlice)
 
 	// --dns-search=<domain name> ...
 	dnsSearchSlice, err := cmd.Flags().GetStringSlice("dns-search")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
-	nopts.dnsSearchDomains = strutil.DedupeStrSlice(dnsSearchSlice)
+	netOpts.DNSSearchDomains = strutil.DedupeStrSlice(dnsSearchSlice)
 
 	// --dns-opt/--dns-option=<resolv.conf line> ...
 	dnsOptions := []string{}
 
 	dnsOptFlags, err := cmd.Flags().GetStringSlice("dns-opt")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
 	dnsOptions = append(dnsOptions, dnsOptFlags...)
 
 	dnsOptionFlags, err := cmd.Flags().GetStringSlice("dns-option")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
 	dnsOptions = append(dnsOptions, dnsOptionFlags...)
 
-	nopts.dnsResolvConfOptions = strutil.DedupeStrSlice(dnsOptions)
+	netOpts.DNSResolvConfOptions = strutil.DedupeStrSlice(dnsOptions)
 
 	// --add-host=<host:IP> ...
 	addHostFlags, err := cmd.Flags().GetStringSlice("add-host")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
-	nopts.addHost = addHostFlags
+	netOpts.AddHost = addHostFlags
 
 	// -p/--publish=127.0.0.1:80:8080/tcp ...
 	portSlice, err := cmd.Flags().GetStringSlice("publish")
 	if err != nil {
-		return nopts, err
+		return netOpts, err
 	}
 	portSlice = strutil.DedupeStrSlice(portSlice)
 	portMappings := []gocni.PortMapping{}
 	for _, p := range portSlice {
 		pm, err := portutil.ParseFlagP(p)
 		if err != nil {
-			return nopts, err
+			return netOpts, err
 		}
 		portMappings = append(portMappings, pm...)
 	}
-	nopts.portMappings = portMappings
+	netOpts.PortMappings = portMappings
 
-	return nopts, nil
+	return netOpts, nil
 }
 
-// networkOptionsManager is an interface for reading/setting networking
+// types.NetworkOptionsManager is an interface for reading/setting networking
 // options for containers based on the provided command flags.
-type networkOptionsManager interface {
-	// Returns a copy of the internal NetworkOptions.
-	getNetworkOptions() networkOptions
+type NetworkOptionsManager interface {
+	// Returns a copy of the internal types.NetworkOptions.
+	GetNetworkOptions() types.NetworkOptions
 
 	// Verifies that the internal network settings are correct.
-	verifyNetworkOptions() error
+	VerifyNetworkOptions(context.Context) error
 
 	// Performs setup actions required for the container with the given ID.
-	setupNetworking(string) error
+	SetupNetworking(context.Context, string) error
 
 	// Performs any required cleanup actions for the container with the given ID.
-	// Should only be called to revert any setup steps performed in setupNetworking.
-	cleanupNetworking(string) error
+	// Should only be called to revert any setup steps performed in SetupNetworking.
+	CleanupNetworking(context.Context, string) error
 
-	// Returns a struct with the internal networking labels for the internal
-	// network settings which should be set of the container.
-	getInternalNetworkingLabels() (internalLabels, error)
+	// Returns the set of NetworkingOptions which should be set as labels on the container.
+	//
+	// These options can potentially differ from the actual networking options
+	// that the NetworkOptionsManager was initially instantiated with.
+	// E.g: in container networking mode, the label will be normalized to an ID:
+	// `--net=container:myContainer` => `--net=container:<ID of myContainer>`.
+	GetInternalNetworkingOptionLabels(context.Context) (types.NetworkOptions, error)
 
 	// Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 	// the network specs which need to be applied to the container with the given ID.
-	getContainerNetworkingOpts(string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error)
+	GetContainerNetworkingOpts(context.Context, string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error)
 }
 
-// Returns a NetworkOptionsManager based on the provided command's flags.
-func newNetworkingOptionsManager(cmd *cobra.Command) (networkOptionsManager, error) {
-	globalOptions, err := processRootCmdFlags(cmd)
+// Returns a types.NetworkOptionsManager based on the provided command's flags.
+func newNetworkingOptionsManager(globalOptions types.GlobalCommandOptions, netOpts types.NetworkOptions) (NetworkOptionsManager, error) {
+	netType, err := nettype.Detect(netOpts.NetworkSlice)
 	if err != nil {
 		return nil, err
 	}
 
-	nopts, err := loadNetworkFlags(cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	netType, err := nettype.Detect(nopts.networkSlice)
-	if err != nil {
-		return nil, err
-	}
-
-	var manager networkOptionsManager
+	var manager NetworkOptionsManager
 	switch netType {
 	case nettype.None:
-		manager = &noneNetworkManager{globalOptions, nopts}
+		manager = &noneNetworkManager{globalOptions, netOpts}
 	case nettype.Host:
-		manager = &hostNetworkManager{globalOptions, nopts}
+		manager = &hostNetworkManager{globalOptions, netOpts}
 	case nettype.Container:
-		manager = &containerNetworkManager{cmd.Context(), globalOptions, nopts}
+		manager = &containerNetworkManager{globalOptions, netOpts}
 	case nettype.CNI:
-		manager = &cniNetworkManager{cmd.Context(), globalOptions, nopts, nil}
+		manager = &cniNetworkManager{globalOptions, netOpts, nil}
 	default:
 		return nil, fmt.Errorf("unexpected container networking type: %q", netType)
-	}
-
-	if err := manager.verifyNetworkOptions(); err != nil {
-		return nil, fmt.Errorf("failed to verify networking options: %s", err)
 	}
 
 	return manager, nil
 }
 
-// No-op NetworkOptionsManager for network-less containers.
+// No-op types.NetworkOptionsManager for network-less containers.
 type noneNetworkManager struct {
 	globalOptions types.GlobalCommandOptions
-	netOpts       networkOptions
+	netOpts       types.NetworkOptions
 }
 
-// Returns a copy of the internal NetworkOptions.
-func (m *noneNetworkManager) getNetworkOptions() networkOptions {
+// Returns a copy of the internal types.NetworkOptions.
+func (m *noneNetworkManager) GetNetworkOptions() types.NetworkOptions {
 	return m.netOpts
 }
 
 // Verifies that the internal network settings are correct.
-func (m *noneNetworkManager) verifyNetworkOptions() error {
+func (m *noneNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	// No options to verify if no network settings are provided.
 	return nil
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *noneNetworkManager) setupNetworking(_ string) error {
+func (m *noneNetworkManager) SetupNetworking(_ context.Context, _ string) error {
 	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
-// Should only be called to revert any setup steps performed in setupNetworking.
-func (m *noneNetworkManager) cleanupNetworking(_ string) error {
+// Should only be called to revert any setup steps performed in SetupNetworking.
+func (m *noneNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
 	return nil
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *noneNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	return m.netOpts.toInternalLabels(), nil
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *noneNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context) (types.NetworkOptions, error) {
+	return m.netOpts, nil
 }
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *noneNetworkManager) getContainerNetworkingOpts(_ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *noneNetworkManager) GetContainerNetworkingOpts(_ context.Context, _ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
 	// No options to return if no network settings are provided.
 	return []oci.SpecOpts{}, []containerd.NewContainerOpts{}, nil
 }
 
-// NetworkOptionsManager implementation for container networking settings.
+// types.NetworkOptionsManager implementation for container networking settings.
 type containerNetworkManager struct {
-	commandContext context.Context
-	globalOptions  types.GlobalCommandOptions
-	netOpts        networkOptions
+	globalOptions types.GlobalCommandOptions
+	netOpts       types.NetworkOptions
 }
 
-// Returns a copy of the internal NetworkOptions.
-func (m *containerNetworkManager) getNetworkOptions() networkOptions {
+// Returns a copy of the internal types.NetworkOptions.
+func (m *containerNetworkManager) GetNetworkOptions() types.NetworkOptions {
 	return m.netOpts
 }
 
 // Verifies that the internal network settings are correct.
-func (m *containerNetworkManager) verifyNetworkOptions() error {
+func (m *containerNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	// TODO: check host OS, not client-side OS.
 	if runtime.GOOS != "linux" {
 		return errors.New("container networking mode is currently only supported on Linux")
 	}
 
-	if m.netOpts.networkSlice != nil && len(m.netOpts.networkSlice) > 1 {
+	if m.netOpts.NetworkSlice != nil && len(m.netOpts.NetworkSlice) > 1 {
 		return errors.New("conflicting options: only one network specification is allowed when using '--network=container:<container>'")
 	}
 
-	if m.netOpts.macAddress != "" {
+	if m.netOpts.MACAddress != "" {
 		return errors.New("conflicting options: mac-address and the network mode")
 	}
 
-	if m.netOpts.portMappings != nil && len(m.netOpts.portMappings) != 0 {
+	if m.netOpts.PortMappings != nil && len(m.netOpts.PortMappings) != 0 {
 		return errors.New("conflicting options: cannot publish ports in container network mode")
 	}
 
-	if m.netOpts.hostname != "" {
+	if m.netOpts.Hostname != "" {
 		return errors.New("conflicting options: cannot set hostname in container network mode")
 	}
 
-	if m.netOpts.dnsServers != nil && len(m.netOpts.dnsServers) != 0 {
+	if m.netOpts.DNSServers != nil && len(m.netOpts.DNSServers) != 0 {
 		return errors.New("conflicting options: cannot set DNS servers in container network mode")
 	}
 
-	if m.netOpts.addHost != nil && len(m.netOpts.addHost) != 0 {
+	if m.netOpts.AddHost != nil && len(m.netOpts.AddHost) != 0 {
 		return errors.New("conflicting options: custom host-to-IP mapping cannot be used in container network mode")
 	}
 
@@ -405,29 +363,29 @@ func (m *containerNetworkManager) getContainerNetworkFilePaths(containerID strin
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *containerNetworkManager) setupNetworking(_ string) error {
+func (m *containerNetworkManager) SetupNetworking(_ context.Context, _ string) error {
 	// NOTE: container networking simply reuses network config files from the
 	// bridged container so there are no setup/teardown steps required.
 	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
-// Should only be called to revert any setup steps performed in setupNetworking.
-func (m *containerNetworkManager) cleanupNetworking(_ string) error {
+// Should only be called to revert any setup steps performed in SetupNetworking.
+func (m *containerNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
 	// NOTE: container networking simply reuses network config files from the
 	// bridged container so there are no setup/teardown steps required.
 	return nil
 }
 
 // Searches for and returns the networking container for the given network argument.
-func (m *containerNetworkManager) getNetworkingContainerForArgument(containerNetArg string) (containerd.Container, error) {
+func (m *containerNetworkManager) getNetworkingContainerForArgument(ctx context.Context, containerNetArg string) (containerd.Container, error) {
 	netItems := strings.Split(containerNetArg, ":")
 	if len(netItems) < 2 {
 		return nil, fmt.Errorf("container networking argument format must be 'container:<id|name>', got: %q", containerNetArg)
 	}
 	containerName := netItems[1]
 
-	client, ctxt, cancel, err := clientutil.NewClient(m.commandContext, m.globalOptions.Namespace, m.globalOptions.Address)
+	client, ctxt, cancel, err := clientutil.NewClient(ctx, m.globalOptions.Namespace, m.globalOptions.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -455,42 +413,41 @@ func (m *containerNetworkManager) getNetworkingContainerForArgument(containerNet
 	return foundContainer, nil
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *containerNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	labels := m.netOpts.toInternalLabels()
-	if m.netOpts.networkSlice == nil || len(m.netOpts.networkSlice) != 1 {
-		return labels, fmt.Errorf("conflicting options: exactly one network specification is allowed when using '--network=container:<container>'")
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *containerNetworkManager) GetInternalNetworkingOptionLabels(ctx context.Context) (types.NetworkOptions, error) {
+	opts := m.netOpts
+	if m.netOpts.NetworkSlice == nil || len(m.netOpts.NetworkSlice) != 1 {
+		return opts, fmt.Errorf("conflicting options: exactly one network specification is allowed when using '--network=container:<container>'")
 	}
 
-	container, err := m.getNetworkingContainerForArgument(m.netOpts.networkSlice[0])
+	container, err := m.getNetworkingContainerForArgument(ctx, m.netOpts.NetworkSlice[0])
 	if err != nil {
-		return labels, err
+		return opts, err
 	}
 	containerID := container.ID()
-	labels.networks = []string{fmt.Sprintf("container:%s", containerID)}
-	return labels, nil
+	opts.NetworkSlice = []string{fmt.Sprintf("container:%s", containerID)}
+	return opts, nil
 }
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *containerNetworkManager) getContainerNetworkingOpts(_ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *containerNetworkManager) GetContainerNetworkingOpts(ctx context.Context, _ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
 	opts := []oci.SpecOpts{}
 	cOpts := []containerd.NewContainerOpts{}
 
-	container, err := m.getNetworkingContainerForArgument(m.netOpts.networkSlice[0])
+	container, err := m.getNetworkingContainerForArgument(ctx, m.netOpts.NetworkSlice[0])
 	if err != nil {
 		return nil, nil, err
 	}
 	containerID := container.ID()
 
-	s, err := container.Spec(m.commandContext)
+	s, err := container.Spec(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	hostname := s.Hostname
 
-	netNSPath, err := containerutil.ContainerNetNSPath(m.commandContext, container)
+	netNSPath, err := containerutil.ContainerNetNSPath(ctx, container)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -514,25 +471,25 @@ func (m *containerNetworkManager) getContainerNetworkingOpts(_ string) ([]oci.Sp
 	return opts, cOpts, nil
 }
 
-// NetworkOptionsManager implementation for host networking settings.
+// types.NetworkOptionsManager implementation for host networking settings.
 type hostNetworkManager struct {
 	globalOptions types.GlobalCommandOptions
-	netOpts       networkOptions
+	netOpts       types.NetworkOptions
 }
 
-// Returns a copy of the internal NetworkOptions.
-func (m *hostNetworkManager) getNetworkOptions() networkOptions {
+// Returns a copy of the internal types.NetworkOptions.
+func (m *hostNetworkManager) GetNetworkOptions() types.NetworkOptions {
 	return m.netOpts
 }
 
 // Verifies that the internal network settings are correct.
-func (m *hostNetworkManager) verifyNetworkOptions() error {
+func (m *hostNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	// TODO: check host OS, not client-side OS.
 	if runtime.GOOS == "windows" {
 		return errors.New("cannot use host networking on Windows")
 	}
 
-	if m.netOpts.macAddress != "" {
+	if m.netOpts.MACAddress != "" {
 		return errors.New("conflicting options: mac-address and the network mode")
 	}
 
@@ -540,30 +497,29 @@ func (m *hostNetworkManager) verifyNetworkOptions() error {
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *hostNetworkManager) setupNetworking(_ string) error {
+func (m *hostNetworkManager) SetupNetworking(_ context.Context, _ string) error {
 	// NOTE: there are no setup steps required for host networking.
 	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
-// Should only be called to revert any setup steps performed in setupNetworking.
-func (m *hostNetworkManager) cleanupNetworking(_ string) error {
+// Should only be called to revert any setup steps performed in SetupNetworking.
+func (m *hostNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
 	// NOTE: there are no setup steps required for host networking.
 	return nil
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *hostNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	labels := m.netOpts.toInternalLabels()
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *hostNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context) (types.NetworkOptions, error) {
+	opts := m.netOpts
 	// Cannot have a MAC address in host networking mode.
-	labels.macAddress = ""
-	return labels, nil
+	opts.MACAddress = ""
+	return opts, nil
 }
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *hostNetworkManager) getContainerNetworkingOpts(_ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *hostNetworkManager) GetContainerNetworkingOpts(_ context.Context, _ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
 	specs := []oci.SpecOpts{
 		oci.WithHostNamespace(specs.NetworkNamespace),
 		oci.WithHostHostsFile,
@@ -572,17 +528,16 @@ func (m *hostNetworkManager) getContainerNetworkingOpts(_ string) ([]oci.SpecOpt
 	return specs, cOpts, nil
 }
 
-// NetworkOptionsManager implementation for CNI networking settings.
+// types.NetworkOptionsManager implementation for CNI networking settings.
 // This is a more specialized and OS-dependendant networking model so this
 // struct provides different implementations on different platforms.
 type cniNetworkManager struct {
-	commandContext context.Context
-	globalOptions  types.GlobalCommandOptions
-	netOpts        networkOptions
-	netNs          *netns.NetNS
+	globalOptions types.GlobalCommandOptions
+	netOpts       types.NetworkOptions
+	netNs         *netns.NetNS
 }
 
-// Returns a copy of the internal NetworkOptions.
-func (m *cniNetworkManager) getNetworkOptions() networkOptions {
+// Returns a copy of the internal types.NetworkOptions.
+func (m *cniNetworkManager) GetNetworkOptions() types.NetworkOptions {
 	return m.netOpts
 }
