@@ -42,6 +42,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/cmd/container"
 	"github.com/containerd/nerdctl/pkg/cmd/image"
+	"github.com/containerd/nerdctl/pkg/containerutil"
 	"github.com/containerd/nerdctl/pkg/defaults"
 	"github.com/containerd/nerdctl/pkg/errutil"
 	"github.com/containerd/nerdctl/pkg/flagutil"
@@ -614,7 +615,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		return nil, nil, fmt.Errorf("failed to load networking flags: %s", err)
 	}
 
-	netManager, err := newNetworkingOptionsManager(globalOptions, netFlags)
+	netManager, err := containerutil.NewNetworkingOptionsManager(globalOptions, netFlags)
 	if err != nil {
 		return nil, nil, err
 	}
