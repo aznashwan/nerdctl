@@ -14,21 +14,23 @@
    limitations under the License.
 */
 
-package main
+package containerutil
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/pkg/netns"
 	gocni "github.com/containerd/go-cni"
+	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/strutil"
 )
 
 // Verifies that the internal network settings are correct.
-func (m *cniNetworkManager) verifyNetworkOptions() error {
+func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	e, err := netutil.NewCNIEnv(m.globalOptions.CNIPath, m.globalOptions.CNINetConfPath, netutil.WithDefaultNetwork())
 	if err != nil {
 		return err
@@ -38,7 +40,7 @@ func (m *cniNetworkManager) verifyNetworkOptions() error {
 	if err != nil {
 		return err
 	}
-	for _, netstr := range m.netOpts.networkSlice {
+	for _, netstr := range m.netOpts.NetworkSlice {
 		netConfig, ok := netMap[netstr]
 		if !ok {
 			return fmt.Errorf("network %s not found", netstr)
@@ -52,7 +54,7 @@ func (m *cniNetworkManager) verifyNetworkOptions() error {
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *cniNetworkManager) setupNetworking(containerID string) error {
+func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
 	network, err := gocni.New(gocni.WithDefaultConf)
 	if err != nil {
 		return err
@@ -63,13 +65,13 @@ func (m *cniNetworkManager) setupNetworking(containerID string) error {
 		return err
 	}
 
-	_, err = network.Setup(m.commandContext, containerID, netNs.GetPath())
+	_, err = network.Setup(ctx, containerID, netNs.GetPath())
 	return err
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
-func (m *cniNetworkManager) cleanupNetworking(containerID string) error {
+func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
 	// NOTE: we must use `gocni.New` since nerdctl/pkg/netutil doesn't support
 	// loading CNI configs < v1.0.0, and Windows only supports <= 0.4.0.
 	network, err := gocni.New(gocni.WithDefaultConf)
@@ -82,18 +84,17 @@ func (m *cniNetworkManager) cleanupNetworking(containerID string) error {
 		return err
 	}
 
-	return network.Remove(m.commandContext, containerID, netNs.GetPath())
+	return network.Remove(ctx, containerID, netNs.GetPath())
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *cniNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	return m.netOpts.toInternalLabels(), nil
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *cniNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context) (types.NetworkOptions, error) {
+	return m.netOpts, nil
 }
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *cniNetworkManager) getContainerNetworkingOpts(containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
 	cOpts := []containerd.NewContainerOpts{}
 
 	ns, err := m.setupNetNs()

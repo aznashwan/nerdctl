@@ -42,6 +42,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/cmd/container"
 	"github.com/containerd/nerdctl/pkg/cmd/image"
+	"github.com/containerd/nerdctl/pkg/containerutil"
 	"github.com/containerd/nerdctl/pkg/defaults"
 	"github.com/containerd/nerdctl/pkg/errutil"
 	"github.com/containerd/nerdctl/pkg/flagutil"
@@ -614,7 +615,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		return nil, nil, fmt.Errorf("failed to load networking flags: %s", err)
 	}
 
-	netManager, err := newNetworkingOptionsManager(globalOptions, netFlags)
+	netManager, err := containerutil.NewNetworkingOptionsManager(globalOptions, netFlags)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -642,12 +643,17 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	internalLabels.networks = netLabels.networks
 	internalLabels.ports = netLabels.ports
 
-	// other hook options:
-	hookOpt, err := withNerdctlOCIHook(cmd, id)
-	if err != nil {
-		return nil, nil, err
+	// NOTE: OCI hooks are currently not supported on Windows so we skip setting them altogether.
+	// The OCI hooks we define (whose logic can be found in pkg/ocihook) primarily
+	// perform network setup and teardown when using CNI networking.
+	// On Windows, we are forced to set up and tear down the networking from within nerdctl.
+	if runtime.GOOS != "windows" {
+		hookOpt, err := withNerdctlOCIHook(cmd, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, hookOpt)
 	}
-	opts = append(opts, hookOpt)
 
 	user, err := cmd.Flags().GetString("user")
 	if err != nil {

@@ -16,39 +16,40 @@
    limitations under the License.
 */
 
-package main
+package containerutil
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/nerdctl/pkg/api/types"
 )
 
 // Verifies that the internal network settings are correct.
-func (m *cniNetworkManager) verifyNetworkOptions() error {
+func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	return fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
 // Performs setup actions required for the container with the given ID.
-func (m *cniNetworkManager) setupNetworking(_ string) error {
-	return nil
+func (m *cniNetworkManager) SetupNetworking(_ context.Context, _ string) error {
+	return fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
-func (m *cniNetworkManager) cleanupNetworking(_ string) error {
-	return nil
+func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+	return fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
-// Returns a struct with the internal networking labels for the internal
-// network settings which should be set of the container.
-func (m *cniNetworkManager) getInternalNetworkingLabels() (internalLabels, error) {
-	return internalLabels{}, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
+// Returns the set of NetworkingOptions which should be set as labels on the container.
+func (m *cniNetworkManager) GetInternalNetworkingOptionLabels() (types.NetworkOptions, error) {
+	return m.netOpts, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
 // Returns a slice of `oci.SpecOpts` which represent the network specs
 // which need to be applied to the container with the given ID.
-func (m *cniNetworkManager) getContainerNetworkingSpecOpts(_ string) ([]oci.SpecOpts, error) {
+func (m *cniNetworkManager) GetContainerNetworkingSpecOpts(_ context.Context, _ string) ([]oci.SpecOpts, error) {
 	return []oci.SpecOpts{}, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }

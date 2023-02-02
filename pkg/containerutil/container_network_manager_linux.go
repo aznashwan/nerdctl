@@ -14,7 +14,7 @@
    limitations under the License.
 */
 
-package main
+package containerutil
 
 import (
 	"context"
@@ -64,12 +64,18 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 
 // Performs setup actions required for the container with the given ID.
 func (m *cniNetworkManager) SetupNetworking(_ context.Context, _ string) error {
+	// NOTE: on non-Windows systems which support OCI hooks, CNI networking setup
+	// is performed via createRuntime and postCreate hooks whose logic can
+	// be found in the pkg/ocihook package.
 	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
 func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+	// NOTE: on non-Windows systems which support OCI hooks, CNI networking setup
+	// is performed via createRuntime and postCreate hooks whose logic can
+	// be found in the pkg/ocihook package.
 	return nil
 }
 

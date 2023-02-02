@@ -116,6 +116,9 @@ func RemoveContainer(ctx context.Context, c containerd.Container, globalOptions 
 			return
 		}
 
+		// TODO(aznashwan):
+		// - instantiate container network manager manager and call `CleanupNetworking`.
+
 		if err := os.RemoveAll(stateDir); err != nil {
 			logrus.WithError(retErr).Warnf("failed to remove container state dir %s", stateDir)
 		}
