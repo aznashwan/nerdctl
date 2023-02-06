@@ -402,7 +402,7 @@ func (m *hostNetworkManager) GetContainerNetworkingOpts(_ context.Context, conta
 	}
 
 	// `/etc/hostname` does not exist on FreeBSD
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" && m.netOpts.UTSNamespace != UtsNamespaceHost {
 		hostnameOpts, err := writeEtcHostnameForContainer(m.globalOptions, m.netOpts.Hostname, containerID)
 		if err != nil {
 			return nil, nil, err
