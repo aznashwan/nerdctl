@@ -133,6 +133,13 @@ func loadNetworkFlags(cmd *cobra.Command) (types.NetworkOptions, error) {
 	}
 	netOpts.AddHost = addHostFlags
 
+	// --uts=<Unix Time Sharing namespace>
+	utsNamespace, err := cmd.Flags().GetString("uts")
+	if err != nil {
+		return netOpts, err
+	}
+	netOpts.UTSNamespace = utsNamespace
+
 	// -p/--publish=127.0.0.1:80:8080/tcp ...
 	portSlice, err := cmd.Flags().GetStringSlice("publish")
 	if err != nil {

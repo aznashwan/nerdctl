@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -35,6 +36,10 @@ import (
 	"github.com/containerd/nerdctl/pkg/mountutil"
 	"github.com/containerd/nerdctl/pkg/netutil/nettype"
 	"github.com/opencontainers/runtime-spec/specs-go"
+)
+
+const (
+	UtsNamespaceHost = "host"
 )
 
 func withCustomResolvConf(src string) func(context.Context, oci.Client, *containers.Container, *oci.Spec) error {
@@ -218,7 +223,7 @@ func (m *containerNetworkManager) getContainerNetworkFilePaths(containerID strin
 	if err != nil {
 		return "", "", "", err
 	}
-	conStateDir, err := getContainerStateDirPath(m.globalOptions, dataStore, containerID)
+	conStateDir, err := GetContainerStateDirPath(m.globalOptions, dataStore, containerID)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -361,7 +366,7 @@ func (m *hostNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 		return errors.New("conflicting options: mac-address and the network mode")
 	}
 
-	return nil
+	return validateUtsSettings(m.netOpts)
 }
 
 // Performs setup actions required for the container with the given ID.
@@ -387,12 +392,26 @@ func (m *hostNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context
 
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
-func (m *hostNetworkManager) GetContainerNetworkingOpts(_ context.Context, _ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+func (m *hostNetworkManager) GetContainerNetworkingOpts(_ context.Context, containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+
+	cOpts := []containerd.NewContainerOpts{}
 	specs := []oci.SpecOpts{
 		oci.WithHostNamespace(specs.NetworkNamespace),
 		oci.WithHostHostsFile,
-		oci.WithHostResolvconf}
-	cOpts := []containerd.NewContainerOpts{}
+		oci.WithHostResolvconf,
+	}
+
+	// `/etc/hostname` does not exist on FreeBSD
+	if runtime.GOOS == "linux" {
+		hostnameOpts, err := writeEtcHostnameForContainer(m.globalOptions, m.netOpts.Hostname, containerID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if hostnameOpts != nil {
+			specs = append(specs, hostnameOpts...)
+		}
+	}
+
 	return specs, cOpts, nil
 }
 
@@ -408,4 +427,53 @@ type cniNetworkManager struct {
 // Returns a copy of the internal types.NetworkOptions.
 func (m *cniNetworkManager) GetNetworkOptions() types.NetworkOptions {
 	return m.netOpts
+}
+
+func validateUtsSettings(netOpts types.NetworkOptions) error {
+	utsNamespace := netOpts.UTSNamespace
+	if utsNamespace == "" {
+		return nil
+	}
+
+	// Docker considers this a validation error so keep compat.
+	// https://docs.docker.com/engine/reference/run/#uts-settings---uts
+	if utsNamespace == UtsNamespaceHost && netOpts.Hostname != "" {
+		return fmt.Errorf("conflicting options: cannot set a --hostname with --uts=host")
+	}
+
+	return nil
+}
+
+// Writes the provided hostname string in a "hostname" file in the Container's
+// Nerdctl-managed datastore and returns the oci.SpecOpts required in the container
+// spec for the file to be mounted under /etc/hostname in the new container.
+// If the hostname is empty, the leading 12 characters of the containerID
+func writeEtcHostnameForContainer(globalOptions types.GlobalCommandOptions, hostname string, containerID string) ([]oci.SpecOpts, error) {
+	if containerID == "" {
+		return nil, fmt.Errorf("container ID is required for setting up hostname file")
+	}
+
+	if hostname == "" {
+		hostname = containerID
+		if len(hostname) > 12 {
+			hostname = hostname[0:12]
+		}
+	}
+
+	dataStore, err := clientutil.DataStore(globalOptions.DataRoot, globalOptions.Address)
+	if err != nil {
+		return nil, err
+	}
+
+	stateDir, err := GetContainerStateDirPath(globalOptions, dataStore, containerID)
+	if err != nil {
+		return nil, err
+	}
+
+	hostnamePath := filepath.Join(stateDir, "hostname")
+	if err := os.WriteFile(hostnamePath, []byte(hostname+"\n"), 0644); err != nil {
+		return nil, err
+	}
+
+	return []oci.SpecOpts{oci.WithHostname(hostname), withCustomEtcHostname(hostnamePath)}, nil
 }

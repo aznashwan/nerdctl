@@ -50,6 +50,11 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 			return fmt.Errorf("network %s of type %q is not supported, must be one of: %v", netType, netstr, validNetworkTypes)
 		}
 	}
+
+	if m.netOpts.UTSNamespace != "" {
+		return fmt.Errorf("--uts is not supported on Windows")
+	}
+
 	return nil
 }
 

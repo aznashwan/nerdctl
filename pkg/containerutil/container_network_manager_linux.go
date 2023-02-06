@@ -59,7 +59,8 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 			return fmt.Errorf("%s interfaces on network %s do not support --mac-address", netType, netstr)
 		}
 	}
-	return nil
+
+	return validateUtsSettings(m.netOpts)
 }
 
 // Performs setup actions required for the container with the given ID.
@@ -89,7 +90,7 @@ func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, contai
 		return nil, nil, err
 	}
 
-	stateDir, err := getContainerStateDirPath(m.globalOptions, dataStore, containerID)
+	stateDir, err := GetContainerStateDirPath(m.globalOptions, dataStore, containerID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,6 +106,14 @@ func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, contai
 		return nil, nil, err
 	}
 	opts = append(opts, withCustomResolvConf(resolvConfPath), withCustomHosts(etcHostsPath))
+
+	hostnameOpts, err := writeEtcHostnameForContainer(m.globalOptions, m.netOpts.Hostname, containerID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if hostnameOpts != nil {
+		opts = append(opts, hostnameOpts...)
+	}
 
 	return opts, cOpts, nil
 }
