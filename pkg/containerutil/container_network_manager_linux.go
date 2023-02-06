@@ -113,12 +113,14 @@ func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, contai
 	}
 	opts = append(opts, withCustomResolvConf(resolvConfPath), withCustomHosts(etcHostsPath))
 
-	hostnameOpts, err := writeEtcHostnameForContainer(m.globalOptions, m.netOpts.Hostname, containerID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if hostnameOpts != nil {
-		opts = append(opts, hostnameOpts...)
+	if m.netOpts.UTSNamespace != UtsNamespaceHost {
+		hostnameOpts, err := writeEtcHostnameForContainer(m.globalOptions, m.netOpts.Hostname, containerID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if hostnameOpts != nil {
+			opts = append(opts, hostnameOpts...)
+		}
 	}
 
 	return opts, cOpts, nil
