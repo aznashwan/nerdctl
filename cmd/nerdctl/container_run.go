@@ -440,7 +440,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 		return nil, nil, err
 	}
 
-	stateDir, err := getContainerStateDirPath(globalOptions, dataStore, id)
+	stateDir, err := containerutil.GetContainerStateDirPath(globalOptions, dataStore, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -578,37 +578,6 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	}
 	cOpts = append(cOpts, withStop(stopSignal, stopTimeout, ensuredImage))
 
-	hostname := id[0:12]
-	customHostname, err := cmd.Flags().GetString("hostname")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	uts, err := cmd.Flags().GetString("uts")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if customHostname != "" {
-		// Docker considers this a validation error so keep compat.
-		if uts != "" {
-			return nil, nil, errors.New("conflicting options: hostname and UTS mode")
-		}
-		hostname = customHostname
-	}
-	if uts == "" {
-		opts = append(opts, oci.WithHostname(hostname))
-		internalLabels.hostname = hostname
-		// `/etc/hostname` does not exist on FreeBSD
-		if runtime.GOOS == "linux" {
-			hostnamePath := filepath.Join(stateDir, "hostname")
-			if err := os.WriteFile(hostnamePath, []byte(hostname+"\n"), 0644); err != nil {
-				return nil, nil, err
-			}
-			opts = append(opts, withCustomEtcHostname(hostnamePath))
-		}
-	}
-
 	// Set networking-related options and labels:
 	netFlags, err := loadNetworkFlags(cmd)
 	if err != nil {
@@ -636,8 +605,8 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate internal networking labels: %s", err)
 	}
-	// TODO(aznashwan): less sloppy way to load net opts into internalLabels:
 	netLabels := networkingLabelsFromOptions(netLabelOpts)
+	// TODO(aznashwan): more formal way to load net opts into internalLabels:
 	internalLabels.macAddress = netLabels.macAddress
 	internalLabels.ipAddress = netLabels.ipAddress
 	internalLabels.networks = netLabels.networks
@@ -1013,16 +982,6 @@ func withNerdctlOCIHook(cmd *cobra.Command, id string) (oci.SpecOpts, error) {
 		})
 		return nil
 	}, nil
-}
-
-func getContainerStateDirPath(globalOptions types.GlobalCommandOptions, dataStore, id string) (string, error) {
-	if globalOptions.Namespace == "" {
-		return "", errors.New("namespace is required")
-	}
-	if strings.Contains(globalOptions.Namespace, "/") {
-		return "", errors.New("namespace with '/' is unsupported")
-	}
-	return filepath.Join(dataStore, "containers", globalOptions.Namespace, id), nil
 }
 
 func withContainerLabels(cmd *cobra.Command) ([]containerd.NewContainerOpts, error) {

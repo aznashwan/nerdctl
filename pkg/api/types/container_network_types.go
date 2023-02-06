@@ -46,6 +46,9 @@ type NetworkOptions struct {
 	// --add-host=<host:IP> ...
 	AddHost []string
 
+	// --uts=<Unix Time Sharing namespace>
+	UTSNamespace string
+
 	// -p/--publish=127.0.0.1:80:8080/tcp ...
 	PortMappings []gocni.PortMapping
 }

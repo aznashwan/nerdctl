@@ -18,9 +18,11 @@ package containerutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +35,7 @@ import (
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/runtime/restart"
+	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/errutil"
 	"github.com/containerd/nerdctl/pkg/formatter"
 	"github.com/containerd/nerdctl/pkg/labels"
@@ -437,4 +440,15 @@ func Unpause(ctx context.Context, client *containerd.Client, id string) error {
 	default:
 		return fmt.Errorf("container %s is not paused", id)
 	}
+}
+
+// Returns the path to the Nerdctl-managed state directory for the container with the given ID.
+func GetContainerStateDirPath(globalOptions types.GlobalCommandOptions, dataStore, id string) (string, error) {
+	if globalOptions.Namespace == "" {
+		return "", errors.New("namespace is required")
+	}
+	if strings.Contains(globalOptions.Namespace, "/") {
+		return "", errors.New("namespace with '/' is unsupported")
+	}
+	return filepath.Join(dataStore, "containers", globalOptions.Namespace, id), nil
 }

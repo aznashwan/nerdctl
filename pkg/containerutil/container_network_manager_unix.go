@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/nerdctl/pkg/api/types"
 )
@@ -44,12 +45,12 @@ func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ string) error
 }
 
 // Returns the set of NetworkingOptions which should be set as labels on the container.
-func (m *cniNetworkManager) GetInternalNetworkingOptionLabels() (types.NetworkOptions, error) {
+func (m *cniNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context) (types.NetworkOptions, error) {
 	return m.netOpts, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
-// Returns a slice of `oci.SpecOpts` which represent the network specs
-// which need to be applied to the container with the given ID.
-func (m *cniNetworkManager) GetContainerNetworkingSpecOpts(_ context.Context, _ string) ([]oci.SpecOpts, error) {
-	return []oci.SpecOpts{}, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
+// Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
+// the network specs which need to be applied to the container with the given ID.
+func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, _ string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
+	return []oci.SpecOpts{}, []containerd.NewContainerOpts{}, fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
