@@ -23,9 +23,9 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/pkg/netns"
-	gocni "github.com/containerd/go-cni"
 	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/netutil"
+	"github.com/containerd/nerdctl/pkg/ocihook"
 	"github.com/containerd/nerdctl/pkg/strutil"
 )
 
@@ -77,19 +77,18 @@ func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID str
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
 func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
-	// NOTE: we must use `gocni.New` since nerdctl/pkg/netutil doesn't support
-	// loading CNI configs < v1.0.0, and Windows only supports <= 0.4.0.
-	network, err := gocni.New(gocni.WithDefaultConf)
-	if err != nil {
-		return err
-	}
+	//network, err := gocni.New(gocni.WithDefaultConf)
+	//if err != nil {
+	//    return err
+	//}
 
-	netNs, err := m.setupNetNs()
-	if err != nil {
-		return err
-	}
+	//netNs, err := m.setupNetNs()
+	//if err != nil {
+	//    return err
+	//}
 
-	return network.Remove(ctx, containerID, netNs.GetPath())
+	//return network.Remove(ctx, containerID, netNs.GetPath())
+	return nil
 }
 
 // Returns the set of NetworkingOptions which should be set as labels on the container.
@@ -100,8 +99,6 @@ func (m *cniNetworkManager) GetInternalNetworkingOptionLabels(_ context.Context)
 // Returns a slice of `oci.SpecOpts` and `containerd.NewContainerOpts` which represent
 // the network specs which need to be applied to the container with the given ID.
 func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, containerID string) ([]oci.SpecOpts, []containerd.NewContainerOpts, error) {
-	cOpts := []containerd.NewContainerOpts{}
-
 	ns, err := m.setupNetNs()
 	if err != nil {
 		return nil, nil, err
@@ -110,6 +107,14 @@ func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, contai
 	opts := []oci.SpecOpts{
 		oci.WithWindowNetworksAllowUnqualifiedDNSQuery(),
 		oci.WithWindowsNetworkNamespace(ns.GetPath()),
+	}
+
+	cOpts := []containerd.NewContainerOpts{
+		containerd.WithAdditionalContainerLabels(
+			map[string]string{
+				ocihook.NetworkNamespace: ns.GetPath(),
+			},
+		),
 	}
 
 	return opts, cOpts, nil
@@ -121,6 +126,7 @@ func (m *cniNetworkManager) setupNetNs() (*netns.NetNS, error) {
 		return m.netNs, nil
 	}
 
+	// NOTE: the baseDir argument to NewNetNS is ignored on Windows.
 	ns, err := netns.NewNetNS("")
 	if err != nil {
 		return nil, err
