@@ -16,7 +16,71 @@
 
 package ocihook
 
+import (
+	"fmt"
+
+	gocni "github.com/containerd/go-cni"
+	"github.com/containerd/nerdctl/pkg/netutil"
+	"github.com/opencontainers/runtime-spec/specs-go"
+)
+
 func loadAppArmor() {
 	//noop
 	return
+}
+
+func loadCNIEnv(cniPath string, cniNetconfPath string, networkList []string) (gocni.CNI, []string, error) {
+	//// TODO: remove limitation in case multiple names of type="nat" (not name="nat"!)
+	//// are supported by HCS:
+	//if len(networkList) > 1 {
+	//    return nil, nil, fmt.Errorf("only one network attachment allowed on Windows")
+	//}
+
+	//// NOTE: we must use `gocni.New` since nerdctl/pkg/netutil doesn't support
+	//// loading CNI configs < v1.0.0, and Windows only supports <= 0.4.0.
+	//network, err := gocni.New(gocni.WithDefaultConf)
+	//if err != nil {
+	//    return nil, nil, err
+	//}
+
+	e, err := netutil.NewCNIEnv(cniPath, cniNetconfPath, netutil.WithDefaultNetwork())
+	if err != nil {
+		return nil, nil, err
+	}
+	cniOpts := []gocni.Opt{
+		gocni.WithPluginDir([]string{cniPath}),
+	}
+	netMap, err := e.NetworkMap()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cniNames := []string{}
+	for _, netstr := range networkList {
+		net, ok := netMap[netstr]
+		if !ok {
+			return nil, nil, fmt.Errorf("no such network: %q", netstr)
+		}
+		cniOpts = append(cniOpts, gocni.WithConfListBytes(net.Bytes))
+		cniNames = append(cniNames, netstr)
+	}
+
+	cni, err := gocni.New(cniOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return cni, cniNames, nil
+}
+
+func getNetNSPath(state *specs.State) (string, error) {
+	// If we have a network-namespace annotation we use it over the passed Pid.
+	if netNsPath, netNsFound := state.Annotations[NetworkNamespace]; netNsFound {
+		if netNsPath == "" {
+			return "", fmt.Errorf("a Windows network namespace annotation must be set")
+		}
+		return netNsPath, nil
+	}
+
+	return "", fmt.Errorf("a Windows network namespace annottion is required, not %q annotation in: %+v", NetworkNamespace, state.Annotations)
 }

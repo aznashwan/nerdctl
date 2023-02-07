@@ -32,7 +32,6 @@ import (
 	"github.com/containerd/nerdctl/pkg/bypass4netnsutil"
 	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
 	"github.com/containerd/nerdctl/pkg/labels"
-	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/netutil/nettype"
 	"github.com/containerd/nerdctl/pkg/rootlessutil"
 	types100 "github.com/containernetworking/cni/pkg/types/100"
@@ -138,29 +137,12 @@ func newHandlerOpts(state *specs.State, dataStore, cniPath, cniNetconfPath strin
 	case nettype.Host, nettype.None, nettype.Container:
 		// NOP
 	case nettype.CNI:
-		e, err := netutil.NewCNIEnv(cniPath, cniNetconfPath, netutil.WithDefaultNetwork())
+		cni, cniNames, err := loadCNIEnv(cniPath, cniNetconfPath, networks)
 		if err != nil {
 			return nil, err
 		}
-		cniOpts := []gocni.Opt{
-			gocni.WithPluginDir([]string{cniPath}),
-		}
-		netMap, err := e.NetworkMap()
-		if err != nil {
-			return nil, err
-		}
-		for _, netstr := range networks {
-			net, ok := netMap[netstr]
-			if !ok {
-				return nil, fmt.Errorf("no such network: %q", netstr)
-			}
-			cniOpts = append(cniOpts, gocni.WithConfListBytes(net.Bytes))
-			o.cniNames = append(o.cniNames, netstr)
-		}
-		o.cni, err = gocni.New(cniOpts...)
-		if err != nil {
-			return nil, err
-		}
+		o.cni = cni
+		o.cniNames = cniNames
 	default:
 		return nil, fmt.Errorf("unexpected network type %v", netType)
 	}
@@ -258,29 +240,6 @@ func getExtraHosts(state *specs.State) (map[string]string, error) {
 		}
 	}
 	return hosts, nil
-}
-
-func getNetNSPath(state *specs.State) (string, error) {
-	// If we have a network-namespace annotation we use it over the passed Pid.
-	netNsPath, netNsFound := state.Annotations[NetworkNamespace]
-	if netNsFound {
-		if _, err := os.Stat(netNsPath); err != nil {
-			return "", err
-		}
-
-		return netNsPath, nil
-	}
-
-	if state.Pid == 0 && !netNsFound {
-		return "", errors.New("both state.Pid and the netNs annotation are unset")
-	}
-
-	// We dont't have a networking namespace annotation, but we have a PID.
-	s := fmt.Sprintf("/proc/%d/ns/net", state.Pid)
-	if _, err := os.Stat(s); err != nil {
-		return "", err
-	}
-	return s, nil
 }
 
 func getPortMapOpts(opts *handlerOpts) ([]gocni.NamespaceOpts, error) {

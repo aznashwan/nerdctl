@@ -17,9 +17,16 @@
 package ocihook
 
 import (
+	"errors"
+	"fmt"
+	"os"
+
 	"github.com/containerd/containerd/contrib/apparmor"
+	gocni "github.com/containerd/go-cni"
 	"github.com/containerd/nerdctl/pkg/apparmorutil"
 	"github.com/containerd/nerdctl/pkg/defaults"
+	"github.com/containerd/nerdctl/pkg/netutil"
+	"github.com/opencontainers/runtime-spec/specs-go"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,4 +43,58 @@ func loadAppArmor() {
 		// If the container is configured to use the default AppArmor profile
 		// but the profile was not actually loaded, runc will fail.
 	}
+}
+
+func loadCNIEnv(cniPath string, cniNetconfPath string, networkList []string) (gocni.CNI, []string, error) {
+	e, err := netutil.NewCNIEnv(cniPath, cniNetconfPath, netutil.WithDefaultNetwork())
+	if err != nil {
+		return nil, nil, err
+	}
+	cniOpts := []gocni.Opt{
+		gocni.WithPluginDir([]string{cniPath}),
+	}
+	netMap, err := e.NetworkMap()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cniNames := []string{}
+	for _, netstr := range networkList {
+		net, ok := netMap[netstr]
+		if !ok {
+			return nil, nil, fmt.Errorf("no such network: %q", netstr)
+		}
+		cniOpts = append(cniOpts, gocni.WithConfListBytes(net.Bytes))
+		cniNames = append(cniNames, netstr)
+	}
+
+	cni, err := gocni.New(cniOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return cni, cniNames, nil
+}
+
+func getNetNSPath(state *specs.State) (string, error) {
+	// If we have a network-namespace annotation we use it over the passed Pid.
+	netNsPath, netNsFound := state.Annotations[NetworkNamespace]
+	if netNsFound {
+		if _, err := os.Stat(netNsPath); err != nil {
+			return "", err
+		}
+
+		return netNsPath, nil
+	}
+
+	if state.Pid == 0 && !netNsFound {
+		return "", errors.New("both state.Pid and the netNs annotation are unset")
+	}
+
+	// We dont't have a networking namespace annotation, but we have a PID.
+	s := fmt.Sprintf("/proc/%d/ns/net", state.Pid)
+	if _, err := os.Stat(s); err != nil {
+		return "", err
+	}
+	return s, nil
 }

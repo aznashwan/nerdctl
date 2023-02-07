@@ -60,18 +60,19 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 
 // Performs setup actions required for the container with the given ID.
 func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
-	network, err := gocni.New(gocni.WithDefaultConf)
-	if err != nil {
-		return err
-	}
+	//network, err := gocni.New(gocni.WithDefaultConf)
+	//if err != nil {
+	//    return err
+	//}
 
-	netNs, err := m.setupNetNs()
-	if err != nil {
-		return err
-	}
+	//netNs, err := m.setupNetNs()
+	//if err != nil {
+	//    return err
+	//}
 
-	_, err = network.Setup(ctx, containerID, netNs.GetPath())
-	return err
+	//_, err = network.Setup(ctx, containerID, netNs.GetPath())
+	//return err
+	return nil
 }
 
 // Performs any required cleanup actions for the container with the given ID.
@@ -115,7 +116,7 @@ func (m *cniNetworkManager) GetContainerNetworkingOpts(_ context.Context, contai
 	return opts, cOpts, nil
 }
 
-// Returns the string path to a network namespace.
+// Creates and returns the a network namespace for the container to run in.
 func (m *cniNetworkManager) setupNetNs() (*netns.NetNS, error) {
 	if m.netNs != nil {
 		return m.netNs, nil
