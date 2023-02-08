@@ -23,6 +23,8 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/pkg/netns"
+	gocni "github.com/containerd/go-cni"
+
 	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/ocihook"
@@ -60,6 +62,9 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 
 // Performs setup actions required for the container with the given ID.
 func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
+	// TODO(aznashwan): make pkg/netutil support CNI configs smaller than v1.0.0,
+	// as the Windows CNI implementation only supports v0.4.0.
+	// Current hack only uses default config:
 	network, err := gocni.New(gocni.WithDefaultConf)
 	if err != nil {
 		return err
@@ -70,25 +75,31 @@ func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID str
 		return err
 	}
 
-	_, err = network.Setup(ctx, containerID, netNs.GetPath())
+	namespaceOpts := []gocni.NamespaceOpts{
+		gocni.WithCapabilityPortMap(m.netOpts.PortMappings),
+	}
+
+	_, err = network.Setup(ctx, containerID, netNs.GetPath(), namespaceOpts...)
 	return err
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
 func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
-	//network, err := gocni.New(gocni.WithDefaultConf)
-	//if err != nil {
-	//    return err
-	//}
+	// TODO(aznashwan): make pkg/netutil support CNI configs smaller than v1.0.0,
+	// as the Windows CNI implementation only supports v0.4.0.
+	// Current hack only uses default config:
+	network, err := gocni.New(gocni.WithDefaultConf)
+	if err != nil {
+		return err
+	}
 
-	//netNs, err := m.setupNetNs()
-	//if err != nil {
-	//    return err
-	//}
+	netNs, err := m.setupNetNs()
+	if err != nil {
+		return err
+	}
 
-	//return network.Remove(ctx, containerID, netNs.GetPath())
-	return nil
+	return network.Remove(ctx, containerID, netNs.GetPath())
 }
 
 // Returns the set of NetworkingOptions which should be set as labels on the container.
