@@ -84,3 +84,13 @@ func getNetNSPath(state *specs.State) (string, error) {
 
 	return "", fmt.Errorf("a Windows network namespace annottion is required, not %q annotation in: %+v", NetworkNamespace, state.Annotations)
 }
+
+func onCreateRuntime(_ *handlerOpts) error {
+	return nil
+}
+
+func onCreateContainer(opts *handlerOpts) error {
+	// NOTE: on Windows, the network setup actions taken in `commonPostCreateSetup`
+	// must be performed within the container's namespace, not the runtime's.
+	return commonPostCreateSetup(opts)
+}

@@ -98,3 +98,13 @@ func getNetNSPath(state *specs.State) (string, error) {
 	}
 	return s, nil
 }
+
+func onCreateRuntime(opts *handlerOpts) error {
+	// NOTE: on Linux, the network setup actions taken in `commonPostCreateSetup`
+	// must be performed within the runtime's namespace, not the container's.
+	return commonPostCreateSetup(opts)
+}
+
+func onCreateContainer(_ *handlerOpts) error {
+	return nil
+}

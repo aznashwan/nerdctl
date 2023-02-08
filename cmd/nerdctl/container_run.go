@@ -54,6 +54,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/mountutil"
 	"github.com/containerd/nerdctl/pkg/namestore"
 	"github.com/containerd/nerdctl/pkg/netutil"
+	"github.com/containerd/nerdctl/pkg/ocihook"
 	"github.com/containerd/nerdctl/pkg/platformutil"
 	"github.com/containerd/nerdctl/pkg/referenceutil"
 	"github.com/containerd/nerdctl/pkg/strutil"
@@ -962,14 +963,24 @@ func withNerdctlOCIHook(cmd *cobra.Command, id string) (oci.SpecOpts, error) {
 		if s.Hooks == nil {
 			s.Hooks = &specs.Hooks{}
 		}
-		crArgs := append(args, "createRuntime")
+
+		crArgs := append(args, ocihook.NerdctlOciHookEventCreateRuntime)
 		s.Hooks.CreateRuntime = append(s.Hooks.CreateRuntime, specs.Hook{
 			Path: selfExe,
 			Args: crArgs,
 			Env:  os.Environ(),
 		})
+
 		argsCopy := append([]string(nil), args...)
-		psArgs := append(argsCopy, "postStop")
+		crcArgs := append(argsCopy, ocihook.NerdctlOciHookEventCreateContainer)
+		s.Hooks.Poststop = append(s.Hooks.CreateContainer, specs.Hook{
+			Path: selfExe,
+			Args: crcArgs,
+			Env:  os.Environ(),
+		})
+
+		argsCopy = append([]string(nil), args...)
+		psArgs := append(argsCopy, ocihook.NerdctlOciHookEventPostStop)
 		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
 			Path: selfExe,
 			Args: psArgs,

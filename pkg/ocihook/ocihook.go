@@ -43,6 +43,10 @@ import (
 )
 
 const (
+	NerdctlOciHookEventCreateRuntime   = "createRuntime"
+	NerdctlOciHookEventCreateContainer = "createContainer"
+	NerdctlOciHookEventPostStop        = "postStop"
+
 	// NetworkNamespace is the network namespace path to be passed to the CNI plugins.
 	// When this annotation is set from the runtime spec.State payload, it takes
 	// precedence over the PID based resolution (/proc/<pid>/ns/net) where pid is
@@ -86,9 +90,11 @@ func Run(stdin io.Reader, stderr io.Writer, event, dataStore, cniPath, cniNetcon
 	}
 
 	switch event {
-	case "createRuntime":
+	case NerdctlOciHookEventCreateRuntime:
 		return onCreateRuntime(opts)
-	case "postStop":
+	case NerdctlOciHookEventCreateContainer:
+		return onCreateContainer(opts)
+	case NerdctlOciHookEventPostStop:
 		return onPostStop(opts)
 	default:
 		return fmt.Errorf("unexpected event %q", event)
@@ -327,7 +333,7 @@ func getMACAddressOpts(opts *handlerOpts) ([]gocni.NamespaceOpts, error) {
 	return nil, nil
 }
 
-func onCreateRuntime(opts *handlerOpts) error {
+func commonPostCreateSetup(opts *handlerOpts) error {
 	loadAppArmor()
 
 	if opts.cni != nil {
