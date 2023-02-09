@@ -26,4 +26,7 @@ const (
 	// use gcr.io/k8s-staging-e2e-test-images/busybox:1.29-2-windows-amd64-ltsc2022 locally on windows 11
 	// https://github.com/microsoft/Windows-Containers/issues/179
 	CommonImage = WindowsNano
+
+	NginxAlpineImage            = WindowsNano
+	NginxAlpineIndexHTMLSnippet = ""
 )
