@@ -19,7 +19,6 @@ package containerutil
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"path/filepath"
 
@@ -32,7 +31,6 @@ import (
 	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/resolvconf"
 	"github.com/containerd/nerdctl/pkg/rootlessutil"
-	"github.com/containerd/nerdctl/pkg/strutil"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,22 +40,10 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	macValidNetworks := []string{"bridge", "macvlan"}
-	netMap, err := e.NetworkMap()
-	if err != nil {
+	if _, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, macValidNetworks); err != nil {
 		return err
-	}
-	for _, netstr := range m.netOpts.NetworkSlice {
-		netConfig, ok := netMap[netstr]
-		if !ok {
-			return fmt.Errorf("network %s not found", netstr)
-		}
-		// if MAC address is specified, the type of the network
-		// must be one of macValidNetworks
-		netType := netConfig.Plugins[0].Network.Type
-		if m.netOpts.MACAddress != "" && !strutil.InStringSlice(macValidNetworks, netType) {
-			return fmt.Errorf("%s interfaces on network %s do not support --mac-address", netType, netstr)
-		}
 	}
 
 	return validateUtsSettings(m.netOpts)

@@ -28,7 +28,6 @@ import (
 	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/ocihook"
-	"github.com/containerd/nerdctl/pkg/strutil"
 )
 
 // Verifies that the internal network settings are correct.
@@ -37,20 +36,11 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// NOTE: only currently supported network type on Windows is nat:
 	validNetworkTypes := []string{"nat"}
-	netMap, err := e.NetworkMap()
-	if err != nil {
+	if _, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, validNetworkTypes); err != nil {
 		return err
-	}
-	for _, netstr := range m.netOpts.NetworkSlice {
-		netConfig, ok := netMap[netstr]
-		if !ok {
-			return fmt.Errorf("network %s not found", netstr)
-		}
-		netType := netConfig.Plugins[0].Network.Type
-		if !strutil.InStringSlice(validNetworkTypes, netType) {
-			return fmt.Errorf("network %s of type %q is not supported, must be one of: %v", netType, netstr, validNetworkTypes)
-		}
 	}
 
 	if m.netOpts.UTSNamespace != "" {
@@ -60,12 +50,30 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	return nil
 }
 
+func (m *cniNetworkManager) getCNI() (gocni.CNI, error) {
+	e, err := netutil.NewCNIEnv(m.globalOptions.CNIPath, m.globalOptions.CNINetConfPath, netutil.WithDefaultNetwork())
+	if err != nil {
+		return nil, err
+	}
+
+	cniOpts := []gocni.Opt{
+		gocni.WithPluginDir([]string{m.globalOptions.CNIPath}),
+	}
+
+	if netMap, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, nil); err == nil {
+		for _, netConf := range netMap {
+			cniOpts = append(cniOpts, gocni.WithConfListBytes(netConf.Bytes))
+		}
+	} else {
+		return nil, err
+	}
+
+	return gocni.New(cniOpts...)
+}
+
 // Performs setup actions required for the container with the given ID.
 func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
-	// TODO(aznashwan): make pkg/netutil support CNI configs smaller than v1.0.0,
-	// as the Windows CNI implementation only supports v0.4.0.
-	// Current hack only uses default config:
-	network, err := gocni.New(gocni.WithDefaultConf)
+	cni, err := m.getCNI()
 	if err != nil {
 		return err
 	}
@@ -75,21 +83,19 @@ func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID str
 		return err
 	}
 
-	namespaceOpts := []gocni.NamespaceOpts{
-		gocni.WithCapabilityPortMap(m.netOpts.PortMappings),
+	namespaceOpts := []gocni.NamespaceOpts{}
+	if m.netOpts.PortMappings != nil {
+		namespaceOpts = append(namespaceOpts, gocni.WithCapabilityPortMap(m.netOpts.PortMappings))
 	}
 
-	_, err = network.Setup(ctx, containerID, netNs.GetPath(), namespaceOpts...)
+	_, err = cni.Setup(ctx, containerID, netNs.GetPath(), namespaceOpts...)
 	return err
 }
 
 // Performs any required cleanup actions for the container with the given ID.
 // Should only be called to revert any setup steps performed in setupNetworking.
 func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
-	// TODO(aznashwan): make pkg/netutil support CNI configs smaller than v1.0.0,
-	// as the Windows CNI implementation only supports v0.4.0.
-	// Current hack only uses default config:
-	network, err := gocni.New(gocni.WithDefaultConf)
+	cni, err := m.getCNI()
 	if err != nil {
 		return err
 	}
@@ -99,7 +105,12 @@ func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID s
 		return err
 	}
 
-	return network.Remove(ctx, containerID, netNs.GetPath())
+	namespaceOpts := []gocni.NamespaceOpts{}
+	if m.netOpts.PortMappings != nil {
+		namespaceOpts = append(namespaceOpts, gocni.WithCapabilityPortMap(m.netOpts.PortMappings))
+	}
+
+	return cni.Remove(ctx, containerID, netNs.GetPath(), namespaceOpts...)
 }
 
 // Returns the set of NetworkingOptions which should be set as labels on the container.

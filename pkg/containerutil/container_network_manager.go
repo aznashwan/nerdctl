@@ -34,7 +34,9 @@ import (
 	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
 	"github.com/containerd/nerdctl/pkg/idutil/containerwalker"
 	"github.com/containerd/nerdctl/pkg/mountutil"
+	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/netutil/nettype"
+	"github.com/containerd/nerdctl/pkg/strutil"
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -476,4 +478,30 @@ func writeEtcHostnameForContainer(globalOptions types.GlobalCommandOptions, host
 	}
 
 	return []oci.SpecOpts{oci.WithHostname(hostname), withCustomEtcHostname(hostnamePath)}, nil
+}
+
+// Loads all available networks and verifies that every selected network
+// from the networkSlice is of a type within supportedTypes.
+func verifyNetworkTypes(env *netutil.CNIEnv, networkSlice []string, supportedTypes []string) (map[string]*netutil.NetworkConfig, error) {
+	netMap, err := env.NetworkMap()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]*netutil.NetworkConfig, len(networkSlice))
+	for _, netstr := range networkSlice {
+		netConfig, ok := netMap[netstr]
+		if !ok {
+			return nil, fmt.Errorf("network %s not found", netstr)
+		}
+		netType := netConfig.Plugins[0].Network.Type
+		if supportedTypes != nil && !strutil.InStringSlice(supportedTypes, netType) {
+
+			return nil, fmt.Errorf("unsupported network type %q for network mapping %q, must be one of: %v", netType, netstr, supportedTypes)
+		}
+
+		res[netstr] = netConfig
+	}
+
+	return res, nil
 }
