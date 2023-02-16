@@ -63,7 +63,7 @@ func (m *cniNetworkManager) getCNI() (gocni.CNI, error) {
 
 	if netMap, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, nil); err == nil {
 		for _, netConf := range netMap {
-			cniOpts = append(cniOpts, gocni.WithConfListFile(netConf.File))
+			cniOpts = append(cniOpts, gocni.WithConfListBytes(netConf.Bytes))
 		}
 	} else {
 		return nil, err
@@ -76,7 +76,7 @@ func (m *cniNetworkManager) getCNI() (gocni.CNI, error) {
 func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
 	cni, err := m.getCNI()
 	if err != nil {
-		return fmt.Errorf("failed to get container networking for cleanup: %s", err)
+		return fmt.Errorf("failed to get container networking for setup: %s", err)
 	}
 
 	netNs, err := m.setupNetNs()
@@ -93,17 +93,23 @@ func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID str
 	return err
 }
 
-// Performs any required cleanup actions for the container with the given ID.
+// Performs any required cleanup actions for the given container.
 // Should only be called to revert any setup steps performed in setupNetworking.
-func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
+func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, container containerd.Container) error {
+	containerID := container.ID()
 	cni, err := m.getCNI()
 	if err != nil {
 		return fmt.Errorf("failed to get container networking for cleanup: %s", err)
 	}
 
-	netNs, err := m.setupNetNs()
+	spec, err := container.Spec(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get container specs for networking cleanup: %s", err)
+	}
+
+	netNsId, found := spec.Annotations[ocihook.NetworkNamespace]
+	if !found {
+		return fmt.Errorf("no %q annotation present on container with ID %s", ocihook.NetworkNamespace, containerID)
 	}
 
 	namespaceOpts := []gocni.NamespaceOpts{}
@@ -111,7 +117,7 @@ func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID s
 		namespaceOpts = append(namespaceOpts, gocni.WithCapabilityPortMap(m.netOpts.PortMappings))
 	}
 
-	return cni.Remove(ctx, containerID, netNs.GetPath(), namespaceOpts...)
+	return cni.Remove(ctx, containerID, netNsId, namespaceOpts...)
 }
 
 // Returns the set of NetworkingOptions which should be set as labels on the container.

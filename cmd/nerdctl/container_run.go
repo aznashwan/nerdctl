@@ -747,7 +747,7 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 			if netErr != nil {
 				logrus.Warnf("a networking setup error has occurred, reverting networking setup: %s", netErr)
 
-				errE := netManager.CleanupNetworking(ctx, id)
+				errE := netManager.CleanupNetworking(ctx, container)
 				if err != nil {
 					logrus.Warnf("failed to revert container networking: %s", errE)
 					isErr = true

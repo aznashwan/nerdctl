@@ -94,9 +94,9 @@ type NetworkOptionsManager interface {
 	// Performs setup actions required for the container with the given ID.
 	SetupNetworking(context.Context, string) error
 
-	// Performs any required cleanup actions for the container with the given ID.
+	// Performs any required cleanup actions for the given container.
 	// Should only be called to revert any setup steps performed in SetupNetworking.
-	CleanupNetworking(context.Context, string) error
+	CleanupNetworking(context.Context, containerd.Container) error
 
 	// Returns the set of NetworkingOptions which should be set as labels on the container.
 	//
@@ -157,9 +157,9 @@ func (m *noneNetworkManager) SetupNetworking(_ context.Context, _ string) error 
 	return nil
 }
 
-// Performs any required cleanup actions for the container with the given ID.
+// Performs any required cleanup actions for the given container.
 // Should only be called to revert any setup steps performed in SetupNetworking.
-func (m *noneNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+func (m *noneNetworkManager) CleanupNetworking(_ context.Context, _ containerd.Container) error {
 	return nil
 }
 
@@ -246,9 +246,9 @@ func (m *containerNetworkManager) SetupNetworking(_ context.Context, _ string) e
 	return nil
 }
 
-// Performs any required cleanup actions for the container with the given ID.
+// Performs any required cleanup actions for the given container.
 // Should only be called to revert any setup steps performed in SetupNetworking.
-func (m *containerNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+func (m *containerNetworkManager) CleanupNetworking(_ context.Context, _ containerd.Container) error {
 	// NOTE: container networking simply reuses network config files from the
 	// bridged container so there are no setup/teardown steps required.
 	return nil
@@ -379,9 +379,9 @@ func (m *hostNetworkManager) SetupNetworking(_ context.Context, _ string) error 
 	return nil
 }
 
-// Performs any required cleanup actions for the container with the given ID.
+// Performs any required cleanup actions for the given container.
 // Should only be called to revert any setup steps performed in SetupNetworking.
-func (m *hostNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+func (m *hostNetworkManager) CleanupNetworking(_ context.Context, _ containerd.Container) error {
 	// NOTE: there are no setup steps required for host networking.
 	return nil
 }
@@ -529,11 +529,12 @@ func NetworkOptionsFromSpec(spec *specs.Spec) (types.NetworkOptions, error) {
 		opts.IPAddress = ipAddress
 	}
 
-	networksJSON := spec.Annotations[labels.Networks]
 	var networks []string
+	networksJSON := spec.Annotations[labels.Networks]
 	if err := json.Unmarshal([]byte(networksJSON), &networks); err != nil {
 		return opts, err
 	}
+	opts.NetworkSlice = networks
 
 	if portsJSON := spec.Annotations[labels.Ports]; portsJSON != "" {
 		if err := json.Unmarshal([]byte(portsJSON), &opts.PortMappings); err != nil {

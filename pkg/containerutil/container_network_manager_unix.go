@@ -38,9 +38,9 @@ func (m *cniNetworkManager) SetupNetworking(_ context.Context, _ string) error {
 	return fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
-// Performs any required cleanup actions for the container with the given ID.
+// Performs any required cleanup actions for the given container.
 // Should only be called to revert any setup steps performed in setupNetworking.
-func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ string) error {
+func (m *cniNetworkManager) CleanupNetworking(_ context.Context, _ containerd.Container) error {
 	return fmt.Errorf("CNI networking currently unsupported on %s", runtime.GOOS)
 }
 
