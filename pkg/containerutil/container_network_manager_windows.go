@@ -53,16 +53,17 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 func (m *cniNetworkManager) getCNI() (gocni.CNI, error) {
 	e, err := netutil.NewCNIEnv(m.globalOptions.CNIPath, m.globalOptions.CNINetConfPath, netutil.WithDefaultNetwork())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to instantiate CNI env: %s", err)
 	}
 
 	cniOpts := []gocni.Opt{
 		gocni.WithPluginDir([]string{m.globalOptions.CNIPath}),
+		gocni.WithPluginConfDir(m.globalOptions.CNINetConfPath),
 	}
 
 	if netMap, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, nil); err == nil {
 		for _, netConf := range netMap {
-			cniOpts = append(cniOpts, gocni.WithConfListBytes(netConf.Bytes))
+			cniOpts = append(cniOpts, gocni.WithConfListFile(netConf.File))
 		}
 	} else {
 		return nil, err
@@ -75,7 +76,7 @@ func (m *cniNetworkManager) getCNI() (gocni.CNI, error) {
 func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID string) error {
 	cni, err := m.getCNI()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get container networking for cleanup: %s", err)
 	}
 
 	netNs, err := m.setupNetNs()
@@ -97,7 +98,7 @@ func (m *cniNetworkManager) SetupNetworking(ctx context.Context, containerID str
 func (m *cniNetworkManager) CleanupNetworking(ctx context.Context, containerID string) error {
 	cni, err := m.getCNI()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get container networking for cleanup: %s", err)
 	}
 
 	netNs, err := m.setupNetNs()

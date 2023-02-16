@@ -728,7 +728,13 @@ func createContainer(ctx context.Context, cmd *cobra.Command, client *containerd
 	cOpts = append(cOpts, spec)
 
 	container, cerr := client.NewContainer(ctx, id, cOpts...)
-	netErr := netManager.SetupNetworking(ctx, id)
+	var netErr error
+	// NOTE: on non-Windows platforms, network setup is performed by OCI hooks.
+	// Seeing as though Windows does not currently support OCI hooks, we must explicitly
+	// perform the network cleanup in nerdctl:
+	if runtime.GOOS == "windows" {
+		netErr = netManager.SetupNetworking(ctx, id)
+	}
 
 	if cerr != nil || netErr != nil {
 		err := cerr

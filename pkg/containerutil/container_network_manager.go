@@ -18,6 +18,7 @@ package containerutil
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -33,6 +34,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
 	"github.com/containerd/nerdctl/pkg/idutil/containerwalker"
+	"github.com/containerd/nerdctl/pkg/labels"
 	"github.com/containerd/nerdctl/pkg/mountutil"
 	"github.com/containerd/nerdctl/pkg/netutil"
 	"github.com/containerd/nerdctl/pkg/netutil/nettype"
@@ -504,4 +506,40 @@ func verifyNetworkTypes(env *netutil.CNIEnv, networkSlice []string, supportedTyp
 	}
 
 	return res, nil
+}
+
+// Returns the NetworkOptions used in a container's creation from its spec.Annotations.
+func NetworkOptionsFromSpec(spec *specs.Spec) (types.NetworkOptions, error) {
+	opts := types.NetworkOptions{}
+
+	if spec == nil {
+		return opts, fmt.Errorf("cannot determine networking options from nil spec")
+	}
+	if spec.Annotations == nil {
+		return opts, fmt.Errorf("cannot determine networking options from nil spec.Annotations")
+	}
+
+	opts.Hostname = spec.Hostname
+
+	if macAddress, ok := spec.Annotations[labels.MACAddress]; ok {
+		opts.MACAddress = macAddress
+	}
+
+	if ipAddress, ok := spec.Annotations[labels.IPAddress]; ok {
+		opts.IPAddress = ipAddress
+	}
+
+	networksJSON := spec.Annotations[labels.Networks]
+	var networks []string
+	if err := json.Unmarshal([]byte(networksJSON), &networks); err != nil {
+		return opts, err
+	}
+
+	if portsJSON := spec.Annotations[labels.Ports]; portsJSON != "" {
+		if err := json.Unmarshal([]byte(portsJSON), &opts.PortMappings); err != nil {
+			return opts, err
+		}
+	}
+
+	return opts, nil
 }

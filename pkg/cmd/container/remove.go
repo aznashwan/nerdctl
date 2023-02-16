@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"syscall"
 
 	"github.com/containerd/containerd"
@@ -31,6 +32,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/api/types"
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/cmd/volume"
+	"github.com/containerd/nerdctl/pkg/containerutil"
 	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
 	"github.com/containerd/nerdctl/pkg/idutil/containerwalker"
 	"github.com/containerd/nerdctl/pkg/labels"
@@ -108,6 +110,21 @@ func RemoveContainer(ctx context.Context, c containerd.Container, globalOptions 
 		return err
 	}
 
+	spec, err := c.Spec(ctx)
+	if err != nil {
+		return err
+	}
+
+	netOpts, err := containerutil.NetworkOptionsFromSpec(spec)
+	if err != nil {
+		return err
+	}
+
+	networkManager, err := containerutil.NewNetworkingOptionsManager(globalOptions, netOpts)
+	if err != nil {
+		return err
+	}
+
 	defer func() {
 		if errdefs.IsNotFound(retErr) {
 			retErr = nil
@@ -116,8 +133,14 @@ func RemoveContainer(ctx context.Context, c containerd.Container, globalOptions 
 			return
 		}
 
-		// TODO(aznashwan):
-		// - instantiate container network manager manager and call `CleanupNetworking`.
+		// NOTE: on non-Windows platforms, network cleanup is performed by OCI hooks.
+		// Seeing as though Windows does not currently support OCI hooks, we must explicitly
+		// perform the network cleanup in nerdctl:
+		if runtime.GOOS == "windows" {
+			if err := networkManager.CleanupNetworking(ctx, c.ID()); err != nil {
+				logrus.WithError(retErr).Warnf("failed to clean up container networking: %s", err)
+			}
+		}
 
 		if err := os.RemoveAll(stateDir); err != nil {
 			logrus.WithError(retErr).Warnf("failed to remove container state dir %s", stateDir)
