@@ -27,6 +27,7 @@ const (
 	// https://github.com/microsoft/Windows-Containers/issues/179
 	CommonImage = WindowsNano
 
-	NginxAlpineImage            = WindowsNano
-	NginxAlpineIndexHTMLSnippet = ""
+	// NOTE(aznashwan): the upstream e2e image is actually based on BusyBox.
+	NginxAlpineImage            = "registry.k8s.io/e2e-test-images/nginx:1.14-2"
+	NginxAlpineIndexHTMLSnippet = "<title>Welcome to nginx!</title>"
 )

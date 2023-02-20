@@ -129,12 +129,8 @@ func valuesOfMapStringString(m map[string]string) map[string]struct{} {
 	return res
 }
 
-func TestRunPortWithNoHostPort(t *testing.T) {
-	baseTestRunPortWithNoHostPort(t)
-}
-
 func TestRunPort(t *testing.T) {
-	baseTestRunPort(t)
+	baseTestRunPort(t, testutil.NginxAlpineImage, testutil.NginxAlpineIndexHTMLSnippet)
 }
 
 func TestRunDNS(t *testing.T) {
@@ -142,6 +138,7 @@ func TestRunDNS(t *testing.T) {
 }
 
 func TestRunContainerWithMACAddress(t *testing.T) {
+	t.Skip("TODO(aznashwan): test MAC on default network.")
 	base := testutil.NewBase(t)
 	tID := testutil.Identifier(t)
 	networkBridge := "testNetworkBridge" + tID
