@@ -17,6 +17,9 @@
 package testutil
 
 const (
+	// HACK(aznashwan): replace the below with the proper URL from the upstream nerdctl GHCR:
+	RegistryImage = "ghcr.io/aznashwan/nerdctl/windows-testing-registry-windows-2019:latest"
+
 	WindowsNano = "gcr.io/k8s-staging-e2e-test-images/busybox:1.29-2"
 
 	// CommonImage.

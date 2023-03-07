@@ -1,0 +1,105 @@
+# Workflow for building container images for use in testing on Windows.
+# Based on the provided `windows-runner` input (e.g. "ltsc2022") this
+# workflow will produce the following container images:
+# - ghcr.io/containerd/nerdctl-windows-test-registry:ltsc2022
+name: Windows Testing Image Building
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker-distribution-repo-url:
+        type: string
+        description: URL of the Git repo to pull docker/distribution from.
+        default: https://github.com/docker/distribution
+        required: true
+      docker-distribution-repo-tag:
+        type: string
+        description: Tag/commit of the Git docker/distribution repo.
+        default: main
+        required: true
+
+env:
+  GHCR_REGISTRY_BASE: ghcr.io
+  GOLANG_BUILDER_IMAGE: golang
+  GOLANG_VERSION: 1.19.2
+
+jobs:
+  build-test-images:
+
+    permissions:
+      contents: 'read'
+      packages: 'write'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2019, windows-2022]
+        include:
+          - runner: windows-2019
+            base_registry_image: mcr.microsoft.com/windows/nanoserver:ltsc2019
+          - runner: windows-2022
+            base_registry_image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2.1.0
+        with:
+          registry: ${{ env.GHCR_REGISTRY_BASE }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push test registry image
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          git clone https://github.com/${{ github.repository }} nerdctl
+          git checkout ${{ github.sha }}
+          cd ./nerdctl/pkg/testutil/testregistry/windows
+
+          $RegConfig = @"
+          version: 0.1
+          log:
+            fields:
+              service: registry
+          storage:
+            cache:
+              blobdescriptor: inmemory
+            filesystem:
+              rootdirectory: /registry
+          http:
+            addr: :5000
+            headers:
+              X-Content-Type-Options: [nosniff]
+          health:
+            storagedriver:
+              enabled: true
+              interval: 10s
+              threshold: 3
+          "@
+          $RegConfig | Set-Content -Path ./registry-config.yml -Encoding ASCII
+
+          $SHORT_REGISTRY_TAG = $(git rev-parse --short HEAD)
+          $REGISTRY_IMAGE = "${{ env.GHCR_REGISTRY_BASE }}/${{ github.repository }}/testing-registry-${{ matrix.runner }}"
+          docker build `
+              --build-arg GOLANG_BUILDER_IMAGE=${{ env.GOLANG_BUILDER_IMAGE }} `
+              --build-arg GOLANG_BUILDER_IMAGE_TAG=${{ env.GOLANG_VERSION }} `
+              --build-arg REGISTRY_GITHUB_REPO=${{ github.event.inputs.docker-distribution-repo-url }} `
+              --build-arg REGISTRY_GITHUB_TAG=${{ github.event.inputs.docker-distribution-repo-tag }} `
+              --build-arg BASE_IMAGE=${{ matrix.base_registry_image }} `
+              -f Dockerfile.registry -t "${REGISTRY_IMAGE}:${SHORT_REGISTRY_TAG}" ./ 
+
+          docker push "${REGISTRY_IMAGE}:${SHORT_REGISTRY_TAG}"
+
+          # Tag it as latest too and push:
+          docker tag "${REGISTRY_IMAGE}:${SHORT_REGISTRY_TAG}" "${REGISTRY_IMAGE}:latest"
+          docker push "${REGISTRY_IMAGE}:latest"
