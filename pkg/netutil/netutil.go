@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,8 +40,11 @@ import (
 	subnetutil "github.com/containerd/nerdctl/pkg/netutil/subnet"
 	"github.com/containerd/nerdctl/pkg/strutil"
 	"github.com/containernetworking/cni/libcni"
+	"github.com/containernetworking/cni/pkg/version"
 	"github.com/sirupsen/logrus"
 )
+
+const maxSupportedWindowsConfigVersion = "0.3.0"
 
 type CNIEnv struct {
 	Path        string
@@ -187,7 +191,12 @@ func (e *CNIEnv) FilterNetworks(filterf func(*NetworkConfig) bool) ([]*NetworkCo
 }
 
 func (e *CNIEnv) getConfigPathForNetworkName(netName string) string {
-	return filepath.Join(e.NetconfPath, "nerdctl-"+netName+".conflist")
+	suffix := ".conflist"
+	// NOTE: current Windows CNI imlementations do not support ConfList files.
+	if runtime.GOOS == "windows" {
+		suffix = ".conf"
+	}
+	return filepath.Join(e.NetconfPath, "nerdctl-"+netName+suffix)
 }
 
 func (e *CNIEnv) usedSubnets() ([]*net.IPNet, error) {
@@ -210,6 +219,46 @@ type NetworkConfig struct {
 	NerdctlID     *string
 	NerdctlLabels *map[string]string
 	File          string
+}
+
+// Struct for internal use when saving CNI network configs on Windows,
+// where the maximum supported CNI config version is v0.3.0.
+type windowsNetworkConfig struct {
+	CNIPlugin
+	CNIVersion string            `json:"cniVersion"`
+	Name       string            `json:"name"`
+	ID         string            `json:"nerdctlID"`
+	Labels     map[string]string `json:"nerdctlLabels"`
+}
+
+func checkWindowsVersionCompatibility(cniVersion string) error {
+	// NOTE: all current Windows CNI plugins only support CNI configs up to v0.3.0.
+	// https://github.com/microsoft/windows-container-networking/blob/a150f21845c673422b8f70967e16e998fb052ab8/cni/cni.go#L30
+	withinMax, err := version.GreaterThanOrEqualTo(maxSupportedWindowsConfigVersion, cniVersion)
+	if err != nil {
+		return fmt.Errorf("failed to compare CNI config versions: %q == %q", cniVersion, maxSupportedWindowsConfigVersion)
+	}
+	if !withinMax {
+		return fmt.Errorf("cannot use CNI config with version %q on Windows, must be at most %q", cniVersion, maxSupportedWindowsConfigVersion)
+	}
+	return nil
+}
+
+func windowsConfigFromNetOptions(cniVersion string, nerdctlID string, labels map[string]string, plugins []CNIPlugin) (*windowsNetworkConfig, error) {
+	if err := checkWindowsVersionCompatibility(cniVersion); err != nil {
+		return nil, fmt.Errorf("cannot use following conf on Windows: %s", err)
+	}
+
+	if len(plugins) != 1 {
+		return nil, fmt.Errorf("Windows configs must have exactly one plugin: %+v", plugins)
+	}
+
+	return &windowsNetworkConfig{
+		CNIPlugin:  plugins[0],
+		CNIVersion: cniVersion,
+		ID:         nerdctlID,
+		Labels:     labels,
+	}, nil
 }
 
 type cniNetworkConfig struct {
@@ -379,23 +428,49 @@ func (e *CNIEnv) generateNetworkConfig(name string, labels []string, plugins []C
 	id := networkID(name)
 	labelsMap := strutil.ConvertKVStringsToMap(labels)
 
-	conf := &cniNetworkConfig{
-		CNIVersion: "1.0.0",
-		Name:       name,
-		ID:         id,
-		Labels:     labelsMap,
-		Plugins:    plugins,
+	var l *libcni.NetworkConfigList
+	if runtime.GOOS == "windows" {
+		// NOTE: all current Windows and related CNI plugins only support CNI configs up to v0.3.0,
+		// so we render the config out as a simple conf file and re-load it.
+		// https://github.com/microsoft/windows-container-networking/blob/a150f21845c673422b8f70967e16e998fb052ab8/cni/cni.go#L30
+		winConf, err := windowsConfigFromNetOptions("0.3.0", id, labelsMap, plugins)
+		if err != nil {
+			return nil, err
+		}
+
+		confBytes, err := json.MarshalIndent(winConf, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+
+		lc, err := libcni.ConfFromBytes(confBytes)
+		if err != nil {
+			return nil, err
+		}
+		l, err = libcni.ConfListFromConf(lc)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		conf := &cniNetworkConfig{
+			// NOTE: the rendered NetworkConfig should be a valid CNI 1.0.0 config.
+			CNIVersion: "1.0.0",
+			Name:       name,
+			ID:         id,
+			Labels:     labelsMap,
+			Plugins:    plugins,
+		}
+		confBytes, err := json.MarshalIndent(conf, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+
+		l, err = libcni.ConfListFromBytes(confBytes)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	confJSON, err := json.MarshalIndent(conf, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	l, err := libcni.ConfListFromBytes(confJSON)
-	if err != nil {
-		return nil, err
-	}
 	return &NetworkConfig{
 		NetworkConfigList: l,
 		NerdctlID:         &id,
@@ -410,6 +485,7 @@ func (e *CNIEnv) writeNetworkConfig(net *NetworkConfig) error {
 	if _, err := os.Stat(filename); err == nil {
 		return errdefs.ErrAlreadyExists
 	}
+
 	if err := os.WriteFile(filename, net.Bytes, 0644); err != nil {
 		return err
 	}
@@ -441,13 +517,23 @@ func (e *CNIEnv) networkConfigList() ([]*NetworkConfig, error) {
 				return nil, err
 			}
 		}
+
 		id, labels := nerdctlIDLabels(lcl.Bytes)
-		l = append(l, &NetworkConfig{
+		conf := &NetworkConfig{
 			NetworkConfigList: lcl,
 			NerdctlID:         id,
 			NerdctlLabels:     labels,
 			File:              fileName,
-		})
+		}
+
+		if runtime.GOOS == "windows" {
+			if err := checkWindowsVersionCompatibility(conf.CNIVersion); err != nil {
+				logrus.Warnf("skipping network config %q as it is not compatible with Windows: %s", fileName, err)
+				continue
+			}
+		}
+
+		l = append(l, conf)
 	}
 	return l, nil
 }
