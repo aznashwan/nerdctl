@@ -269,6 +269,13 @@ func generateMountOpts(ctx context.Context, cmd *cobra.Command, client *containe
 			return nil, nil, nil, err
 		}
 
+		if runtime.GOOS == "windows" && filepath.IsAbs(imgVol) {
+			// NOTE: both `filepath.Join()` and `securepath.SecureJoin()` concatenate
+			// absolute paths on Windows, so we must check and substitute the imfVol drive.
+			// This will lead to SecureJoin("C:\c1\c2", "D\d1\d2") => "C:\c1\c2\D\d1\d2".
+			imgVol = strings.ReplaceAll(imgVol, ":", "")
+		}
+
 		target, err := securejoin.SecureJoin(tempDir, imgVol)
 		if err != nil {
 			return nil, nil, nil, err
