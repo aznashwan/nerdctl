@@ -54,11 +54,19 @@ bar`
 		return nil
 	})
 
+	// To avoid any runtime-induced timing flakyness, we create a new container
+	// just for the --since/--until test flags.
+	base.Cmd("rm", "-f", containerName).AssertOK()
+	defer base.Cmd("rm", containerName).Run()
+	base.Cmd("run", "-d", "--name", containerName, testutil.CommonImage,
+		"sh", "-euxc", "echo 0; sleep 5; echo 5; sleep 5; echo 10").AssertOK()
+	time.Sleep(10)
+
 	//test since / until flag
-	base.Cmd("logs", "--since", "1s", containerName).AssertNoOut(expected)
-	base.Cmd("logs", "--since", "5s", containerName).AssertOutContains(expected)
-	base.Cmd("logs", "--until", "5s", containerName).AssertNoOut(expected)
-	base.Cmd("logs", "--until", "1s", containerName).AssertOutContains(expected)
+	base.Cmd("logs", "--since", "2s", containerName).AssertOutExactly("10\n")
+	base.Cmd("logs", "--since", "7s", containerName).AssertOutExactly("5\n10\n")
+	base.Cmd("logs", "--until", "8s", containerName).AssertOutExactly("0\n")
+	base.Cmd("logs", "--until", "2s", containerName).AssertOutContains("\n0\n5")
 
 	base.Cmd("rm", "-f", containerName).AssertOK()
 }
