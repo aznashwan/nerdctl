@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -370,8 +371,13 @@ func (e *CNIEnv) generateNetworkConfig(name string, labels []string, plugins []C
 	id := networkID(name)
 	labelsMap := strutil.ConvertKVStringsToMap(labels)
 
+	cniVersion := "1.0.0"
+	if runtime.GOOS == "windows" {
+		cniVersion = "0.3.0"
+	}
+
 	conf := &cniNetworkConfig{
-		CNIVersion: "1.0.0",
+		CNIVersion: cniVersion,
 		Name:       name,
 		ID:         id,
 		Labels:     labelsMap,
