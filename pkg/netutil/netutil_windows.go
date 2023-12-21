@@ -67,7 +67,7 @@ func (e *CNIEnv) generateCNIPlugins(driver string, name string, ipam map[string]
 	var plugins []CNIPlugin
 	switch driver {
 	case "nat":
-		nat := newNatPlugin("Ethernet")
+		nat := newNatPlugin()
 		nat.IPAM = ipam
 		plugins = []CNIPlugin{nat}
 	default:
