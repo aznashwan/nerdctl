@@ -42,7 +42,7 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 	}
 
 	if m.netOpts.MACAddress != "" {
-		macValidNetworks := []string{"bridge", "macvlan"}
+		macValidNetworks := []string{netutil.DriverBridge, netutil.DriverMacvlan}
 		if _, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, macValidNetworks); err != nil {
 			return err
 		}

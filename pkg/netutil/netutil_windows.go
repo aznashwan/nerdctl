@@ -32,6 +32,11 @@ const (
 	// nerdctl assigns subnet address for the creation starting from `StartingCIDR`
 	// This prevents subnet address overlapping with `DefaultCIDR` used by the default networkß
 	StartingCIDR = "10.4.1.0/24"
+
+	DriverNat         = "nat"
+	DriverL2Bridge    = "l2bridge"
+	DriverOverlay     = "overlay"
+	DriverTransparent = "transparent"
 )
 
 func (n *NetworkConfig) subnets() []*net.IPNet {

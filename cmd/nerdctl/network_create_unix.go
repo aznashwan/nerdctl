@@ -18,14 +18,18 @@
 
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/containerd/nerdctl/pkg/netutil"
+)
 
 const (
-	DefaultNetworkDriver = "bridge"
+	DefaultNetworkDriver = netutil.DriverBridge
 )
 
 func shellCompleteNetworkDrivers(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	candidates := []string{"bridge", "macvlan", "ipvlan"}
+	candidates := []string{netutil.DriverBridge, netutil.DriverMacvlan, netutil.DriverIPvlan}
 	return candidates, cobra.ShellCompDirectiveNoFileComp
 }
 

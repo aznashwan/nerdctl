@@ -38,6 +38,10 @@ import (
 )
 
 const (
+	DriverBridge  = "bridge"
+	DriverMacvlan = "macvlan"
+	DriverIPvlan  = "ipvlan"
+
 	DefaultNetworkName = "bridge"
 	DefaultCIDR        = "10.4.0.0/24"
 	DefaultIPAMDriver  = "host-local"
@@ -50,7 +54,7 @@ const (
 
 func (n *NetworkConfig) subnets() []*net.IPNet {
 	var subnets []*net.IPNet
-	if len(n.Plugins) > 0 && n.Plugins[0].Network.Type == "bridge" {
+	if len(n.Plugins) > 0 && n.Plugins[0].Network.Type == DriverBridge {
 		var bridge bridgeConfig
 		if err := json.Unmarshal(n.Plugins[0].Bytes, &bridge); err != nil {
 			return subnets
@@ -77,7 +81,7 @@ func (n *NetworkConfig) subnets() []*net.IPNet {
 
 func (n *NetworkConfig) clean() error {
 	// Remove the bridge network interface on the host.
-	if len(n.Plugins) > 0 && n.Plugins[0].Network.Type == "bridge" {
+	if len(n.Plugins) > 0 && n.Plugins[0].Network.Type == DriverBridge {
 		var bridge bridgeConfig
 		if err := json.Unmarshal(n.Plugins[0].Bytes, &bridge); err != nil {
 			return err
@@ -128,7 +132,7 @@ func (e *CNIEnv) generateCNIPlugins(driver string, name string, ipam map[string]
 		}
 		plugins = []CNIPlugin{bridge, newPortMapPlugin(), newFirewallPlugin(), newTuningPlugin()}
 		plugins = fixUpIsolation(e, name, plugins)
-	case "macvlan", "ipvlan":
+	case DriverMacvlan, DriverIPvlan:
 		mtu := 0
 		mode := ""
 		master := ""
@@ -140,8 +144,8 @@ func (e *CNIEnv) generateCNIPlugins(driver string, name string, ipam map[string]
 					return nil, err
 				}
 			case "mode", "macvlan_mode", "ipvlan_mode":
-				if driver == "macvlan" && opt != "ipvlan_mode" {
-					if !strutil.InStringSlice([]string{"bridge"}, v) {
+				if driver == DriverMacvlan && opt != "ipvlan_mode" {
+					if !strutil.InStringSlice([]string{DriverBridge}, v) {
 						return nil, fmt.Errorf("unknown macvlan mode %q", v)
 					}
 				} else if driver == "ipvlan" && opt != "macvlan_mode" {
