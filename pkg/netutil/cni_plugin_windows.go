@@ -16,19 +16,38 @@
 
 package netutil
 
-type natConfig struct {
+import "fmt"
+
+const (
+	PluginNat       = "nat"
+	PluginSDNBridge = "sdnbridge"
+	PluginOverlay   = "sdnoverlay"
+)
+
+var windowsDriverToPluginMap = map[string]string{
+	DriverNat:      PluginNat,
+	DriverL2Bridge: PluginSDNBridge,
+	DriverOverlay:  PluginOverlay,
+}
+
+type pluginConfig struct {
 	PluginType string                 `json:"type"`
 	IPAM       map[string]interface{} `json:"ipam"`
 }
 
-func (*natConfig) GetPluginType() string {
-	return "nat"
+func (conf *pluginConfig) GetPluginType() string {
+	return conf.PluginType
 }
 
-func newNatPlugin() *natConfig {
-	return &natConfig{
-		PluginType: "nat",
+func newPlugin(driverName string) (*pluginConfig, error) {
+	pluginType, ok := windowsDriverToPluginMap[driverName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported CNI driver %q", driverName)
 	}
+
+	return &pluginConfig{
+		PluginType: pluginType,
+	}, nil
 }
 
 // https://github.com/microsoft/windows-container-networking/blob/v0.2.0/cni/cni.go#L55-L63

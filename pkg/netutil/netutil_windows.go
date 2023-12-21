@@ -42,12 +42,12 @@ const (
 func (n *NetworkConfig) subnets() []*net.IPNet {
 	var subnets []*net.IPNet
 	if n.Plugins[0].Network.Type == "nat" {
-		var nat natConfig
-		if err := json.Unmarshal(n.Plugins[0].Bytes, &nat); err != nil {
+		var plugin pluginConfig
+		if err := json.Unmarshal(n.Plugins[0].Bytes, &plugin); err != nil {
 			return subnets
 		}
 		var ipam windowsIpamConfig
-		if err := mapstructure.Decode(nat.IPAM, &ipam); err != nil {
+		if err := mapstructure.Decode(plugin.IPAM, &ipam); err != nil {
 			return subnets
 		}
 		_, subnet, err := net.ParseCIDR(ipam.Subnet)
@@ -64,16 +64,12 @@ func (n *NetworkConfig) clean() error {
 }
 
 func (e *CNIEnv) generateCNIPlugins(driver string, name string, ipam map[string]interface{}, opts map[string]string, ipv6 bool) ([]CNIPlugin, error) {
-	var plugins []CNIPlugin
-	switch driver {
-	case "nat":
-		nat := newNatPlugin()
-		nat.IPAM = ipam
-		plugins = []CNIPlugin{nat}
-	default:
-		return nil, fmt.Errorf("unsupported cni driver %q", driver)
+	plugin, err := newPlugin(driver)
+	if err != nil {
+		return nil, err
 	}
-	return plugins, nil
+
+	return []CNIPlugin{plugin}, nil
 }
 
 func (e *CNIEnv) generateIPAM(driver string, subnets []string, gatewayStr, ipRangeStr string, opts map[string]string, ipv6 bool) (map[string]interface{}, error) {
@@ -99,8 +95,4 @@ func (e *CNIEnv) generateIPAM(driver string, subnets []string, gatewayStr, ipRan
 		return nil, err
 	}
 	return ipam, nil
-}
-
-func removeBridgeNetworkInterface(name string) error {
-	return nil
 }
