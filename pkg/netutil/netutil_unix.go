@@ -52,19 +52,19 @@ const (
 	StartingCIDR = "10.4.1.0/24"
 )
 
-func (n *NetworkConfig) subnets() []*net.IPNet {
+func (n *NetworkConfig) subnets() ([]*net.IPNet, error) {
 	var subnets []*net.IPNet
 	if len(n.Plugins) > 0 && n.Plugins[0].Network.Type == DriverBridge {
 		var bridge bridgeConfig
 		if err := json.Unmarshal(n.Plugins[0].Bytes, &bridge); err != nil {
-			return subnets
+			return nil, fmt.Errorf("failed to unmarshal JSON for plugin %q: %s", n.Plugins[0].Network.Type, err)
 		}
 		if bridge.IPAM["type"] != "host-local" {
-			return subnets
+			return subnets, nil
 		}
 		var ipam hostLocalIPAMConfig
 		if err := mapstructure.Decode(bridge.IPAM, &ipam); err != nil {
-			return subnets
+			return nil, fmt.Errorf("failed to decode IPAM for plugin %q: %s", n.Plugins[0].Network.Type, err)
 		}
 		for _, irange := range ipam.Ranges {
 			if len(irange) > 0 {
@@ -76,7 +76,7 @@ func (n *NetworkConfig) subnets() []*net.IPNet {
 			}
 		}
 	}
-	return subnets
+	return subnets, nil
 }
 
 func (n *NetworkConfig) clean() error {

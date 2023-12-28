@@ -205,7 +205,11 @@ func (e *CNIEnv) usedSubnets() ([]*net.IPNet, error) {
 		return nil, err
 	}
 	for _, net := range networkConfigs {
-		usedSubnets = append(usedSubnets, net.subnets()...)
+		subnets, err := net.subnets()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get used subnets for network %q: %s", net.Name, err)
+		}
+		usedSubnets = append(usedSubnets, subnets...)
 	}
 	return usedSubnets, nil
 }

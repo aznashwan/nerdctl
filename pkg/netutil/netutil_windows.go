@@ -39,24 +39,21 @@ const (
 	DriverTransparent = "transparent"
 )
 
-func (n *NetworkConfig) subnets() []*net.IPNet {
-	var subnets []*net.IPNet
-	if n.Plugins[0].Network.Type == "nat" {
-		var plugin pluginConfig
-		if err := json.Unmarshal(n.Plugins[0].Bytes, &plugin); err != nil {
-			return subnets
-		}
-		var ipam windowsIpamConfig
-		if err := mapstructure.Decode(plugin.IPAM, &ipam); err != nil {
-			return subnets
-		}
-		_, subnet, err := net.ParseCIDR(ipam.Subnet)
-		if err != nil {
-			return subnets
-		}
-		subnets = append(subnets, subnet)
+func (n *NetworkConfig) subnets() ([]*net.IPNet, error) {
+	var plugin pluginConfig
+	if err := json.Unmarshal(n.Plugins[0].Bytes, &plugin); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON for plugin %q: %s", n.Plugins[0].Network.Type, err)
 	}
-	return subnets
+	var ipam windowsIpamConfig
+	if err := mapstructure.Decode(plugin.IPAM, &ipam); err != nil {
+		return nil, fmt.Errorf("failed to decode IPAM for plugin %q: %s", n.Plugins[0].Network.Type, err)
+	}
+	_, subnet, err := net.ParseCIDR(ipam.Subnet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CIDRs plugin %q: %s", n.Plugins[0].Network.Type, err)
+	}
+	subnets := []*net.IPNet{subnet}
+	return subnets, nil
 }
 
 func (n *NetworkConfig) clean() error {
@@ -68,6 +65,7 @@ func (e *CNIEnv) generateCNIPlugins(driver string, name string, ipam map[string]
 	if err != nil {
 		return nil, err
 	}
+	plugin.IPAM = ipam
 
 	return []CNIPlugin{plugin}, nil
 }
