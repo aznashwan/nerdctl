@@ -37,8 +37,11 @@ func (m *cniNetworkManager) VerifyNetworkOptions(_ context.Context) error {
 		return err
 	}
 
-	// NOTE: only currently supported network type on Windows is nat:
-	validNetworkTypes := []string{netutil.DriverNat, netutil.DriverL2Bridge, netutil.DriverOverlay}
+	validNetworkDrivers := []string{netutil.DriverNat, netutil.DriverL2Bridge, netutil.DriverOverlay}
+	validNetworkTypes := []string{}
+	for _, dt := range validNetworkDrivers {
+		validNetworkTypes = append(validNetworkTypes, netutil.WindowsNetworkDriverToPluginMap[dt])
+	}
 	if _, err := verifyNetworkTypes(e, m.netOpts.NetworkSlice, validNetworkTypes); err != nil {
 		return err
 	}

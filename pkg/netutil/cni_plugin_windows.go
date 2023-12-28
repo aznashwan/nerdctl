@@ -24,7 +24,8 @@ const (
 	PluginOverlay   = "sdnoverlay"
 )
 
-var windowsDriverToPluginMap = map[string]string{
+// This maps network driver names as used by Docker to the names of the Windows CNI plugins.
+var WindowsNetworkDriverToPluginMap = map[string]string{
 	DriverNat:      PluginNat,
 	DriverL2Bridge: PluginSDNBridge,
 	DriverOverlay:  PluginOverlay,
@@ -40,7 +41,7 @@ func (conf *pluginConfig) GetPluginType() string {
 }
 
 func newPlugin(driverName string) (*pluginConfig, error) {
-	pluginType, ok := windowsDriverToPluginMap[driverName]
+	pluginType, ok := WindowsNetworkDriverToPluginMap[driverName]
 	if !ok {
 		return nil, fmt.Errorf("unsupported CNI driver %q", driverName)
 	}
